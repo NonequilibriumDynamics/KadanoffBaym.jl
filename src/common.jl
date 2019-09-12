@@ -57,8 +57,6 @@ end
   cnt = cache.step
 
   if cache.step <= 2 # Euler-Heun
-    cache.step += 1
-
     OrdinaryDiffEq.perform_step!(integrator, OrdinaryDiffEq.HeunConstantCache())
 
     # Update cache for ADM
@@ -68,9 +66,11 @@ end
       cache.k2 = k1
     end
 
+    cache.step += 1
+
   else # Adams-Bashfourth-Moulton
     OrdinaryDiffEq.perform_step!(integrator, KadanoffBaym4Cache(k2,k3,k4,cnt)) # Predictor
-    
+
     k = integrator.fsallast
     u = uprev + (dt/24)*(9*k + 19*k1 - 5*k2 + k3) # Corrector
     cache.k4 = k3
@@ -83,6 +83,8 @@ end
     integrator.k[1] = integrator.fsalfirst
     integrator.k[2] = integrator.fsallast
     integrator.u = u
+
+    cache.step += 1
   end
 end
 
