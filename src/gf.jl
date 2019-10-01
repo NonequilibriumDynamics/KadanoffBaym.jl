@@ -20,10 +20,6 @@ function LesserGF(A::AbstractArray)
     return lesserGF_type(typeof(A))(A)
 end
 
-function LesserGF(L::Integer)
-    return LesserGF(zeros(Complex{Float64}, L, L))
-end
-
 function lesserGF_type(::Type{T}) where {S<:Number, T<:AbstractArray{S}}
     return LesserGF{S, T}
 end
@@ -49,10 +45,6 @@ function GreaterGF(A::AbstractArray)
     return greaterGF_type(typeof(A))(A)
 end
 
-function GreaterGF(::T, L::Integer) where T
-    return GreaterGF(zeros(T, L, L))
-end
-
 function greaterGF_type(::Type{T}) where {S<:Number, T<:AbstractArray{S}}
     return GreaterGF{S, T}
 end
@@ -62,7 +54,8 @@ end
 
 const LesserOrGreater{T,S} = Union{LesserGF{T,S}, GreaterGF{T,S}}
 
-size(G::LesserOrGreater) = size(G.data)
+Base.size(G::LesserOrGreater) = size(G.data)
+Base.convert(T::Type{<:GreenFunction}, m::AbstractArray) = T(m)
 
 @inline function Base.getindex(G::LesserOrGreater, i::Integer, j::Integer) where {N}
     # @boundscheck Base.checkbounds(G.data, i, j)
