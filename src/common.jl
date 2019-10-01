@@ -1,108 +1,92 @@
-using Parameters
-using MuladdMacro
+struct KB{algType} <: OrdinaryDiffEq.OrdinaryDiffEqAlgorithm end
+export KB
 
-using Reexport
-@reexport using OrdinaryDiffEq
+OrdinaryDiffEq.alg_order(::KB{algType}) where {algType} = OrdinaryDiffEq.alg_order(algType())
+OrdinaryDiffEq.isfsal(::KB) = false
 
-struct KadanoffBaym <: OrdinaryDiffEq.OrdinaryDiffEqAlgorithm end
-export KadanoffBaym
-
-OrdinaryDiffEq.alg_order(alg::KadanoffBaym) = 4
+cachify(::KB{algType}) where algType = eval(Symbol(string(algType) * "ConstantCache"))
 
 # OrdinaryDiffEq.@cache
-mutable struct KadanoffBaym4Cache{rateType} <: OrdinaryDiffEq.OrdinaryDiffEqConstantCache
-  k2::rateType
-  k3::rateType
-  k4::rateType
-  step::Int
+mutable struct KBCache{algCacheType} <: OrdinaryDiffEq.OrdinaryDiffEqConstantCache
+  caches::Array{algCacheType, 1}
 end
 
-# OrdinaryDiffEq.@cache
-mutable struct KadanoffBaym43Cache{rateType} <: OrdinaryDiffEq.OrdinaryDiffEqConstantCache
-  k2::rateType
-  k3::rateType
-  k4::rateType
-  step::Int
+function OrdinaryDiffEq.alg_cache(::KB{algType},u,rate_prototype,uEltypeNoUnits,uBottomEltypeNoUnits,tTypeNoUnits,uprev,uprev2,f,t,dt,reltol_internal,p,calck,::Type{Val{false}}) where algType
+  cache = OrdinaryDiffEq.alg_cache(algType(),u,rate_prototype,uEltypeNoUnits,uBottomEltypeNoUnits,tTypeNoUnits,uprev,uprev2,f,t,dt,reltol_internal,p,calck,Val{false})
+  return KBCacheCache{cachify(algType)}()
 end
 
-function OrdinaryDiffEq.alg_cache(::KadanoffBaym,u,rate_prototype,uEltypeNoUnits,uBottomEltypeNoUnits,tTypeNoUnits,uprev,uprev2,f,t,dt,reltol,p,calck,::Type{Val{false}})
-  k2 = rate_prototype
-  k3 = rate_prototype
-  k4 = rate_prototype
-  KadanoffBaym43Cache(k2,k3,k4,1)
-end
+# Code much like OrdinaryDiffEq.jl, which is licensed under the MIT "Expat" License
+function DiffEqBase.__init(prob::ODEProblem, alg::KB, dt::Float64,
+                           abstol=nothing, reltol=nothing,
 
-function OrdinaryDiffEq.initialize!(integrator,cache::Union{KadanoffBaym43Cache,
-                                                            KadanoffBaym4Cache})
-  integrator.fsalfirst = integrator.f(integrator.uprev, integrator.p, integrator.t) # Pre-start fsal
-  integrator.destats.nf += 1
-  integrator.kshortsize = 2
-  integrator.k = typeof(integrator.k)(undef, integrator.kshortsize)
+  dtmax = eltype(prob.tspan)((prob.tspan[end]-prob.tspan[1])),
+  callback=nothing)
 
-  # Avoid undefined entries if k is an array of arrays
-  integrator.fsallast = zero.(integrator.fsalfirst)
-  integrator.k[1] = integrator.fsalfirst
-  integrator.k[2] = integrator.fsallast
-end
+  tType = eltype(prob.tspan)
+  tspan = prob.tspan
+  tdir = sign(tspan[end]-tspan[1])
 
-# Predictor - Corrector
-@muladd function OrdinaryDiffEq.perform_step!(integrator,cache::KadanoffBaym43Cache,repeat_step=false)
-  @unpack t,dt,uprev,u,f,p = integrator
-  @unpack k2,k3,k4 = cache
-  k1 = integrator.fsalfirst
+  t = tspan[1]
+  t′ = tspan[1]
 
-  if integrator.u_modified
-    cache.step = 1
+  f = prob.f
+  p = prob.p
+
+  u = recursivecopy(prob.u0) # it's also ks
+
+  uType = typeof(u)
+  uBottomEltype = recursive_bottom_eltype(u)
+  uBottomEltypeNoUnits = recursive_unitless_bottom_eltype(u)
+
+  # ks = Vector{uType}(undef, 0)
+
+  uEltypeNoUnits = recursive_unitless_eltype(u)
+  tTypeNoUnits   = typeof(one(tType))
+  
+  if abstol === nothing
+  if uBottomEltypeNoUnits == uBottomEltype
+    abstol_internal = real(convert(uBottomEltype,oneunit(uBottomEltype)*1//10^6))
+  else
+    abstol_internal = real.(oneunit.(u).*1//10^6)
   end
-  cnt = cache.step
+  else
+  abstol_internal = real.(abstol)
+  end
+  
+  if reltol === nothing
+  if uBottomEltypeNoUnits == uBottomEltype
+    reltol_internal = real(convert(uBottomEltype,oneunit(uBottomEltype)*1//10^3))
+  else
+    reltol_internal = real.(oneunit.(u).*1//10^3)
+  end
+  else
+  reltol_internal = real.(reltol)
+  end
+  
+  dtmax > zero(dtmax) && tdir < 0 && (dtmax *= tdir) # Allow positive dtmax, but auto-convert
+  
+  if uBottomEltypeNoUnits == uBottomEltype
+  rate_prototype = u
+  else # has units!
+  rate_prototype = u/oneunit(tType)
+  end
+  
+  rateType = typeof(rate_prototype)
+  
+  saveat = eltype(prob.tspan)[]
+  tstops = eltype(prob.tspan)[]
+  d_discontinuities= eltype(prob.tspan)[]
+  
+  tstops_internal, saveat_internal, d_discontinuities_internal =
+  OrdinaryDiffEq.tstop_saveat_disc_handling(tstops, saveat, d_discontinuities, tspan)
+  
+  callbacks_internal = OrdinaryDiffEq.CallbackSet(callback,prob.callback)
 
-  if cache.step <= 2 # Euler-Heun
-    OrdinaryDiffEq.perform_step!(integrator, OrdinaryDiffEq.HeunConstantCache())
-
-    # Update cache for ADM
-    if cnt == 1
-      cache.k3 = k1
-    else
-      cache.k2 = k1
-    end
-
-    cache.step += 1
-
-  else # Adams-Bashfourth-Moulton
-    OrdinaryDiffEq.perform_step!(integrator, KadanoffBaym4Cache(k2,k3,k4,cnt)) # Predictor
-
-    k = integrator.fsallast
-    u = uprev + (dt/24)*(9*k + 19*k1 - 5*k2 + k3) # Corrector
-    cache.k4 = k3
-    cache.k3 = k2
-    cache.k2 = k1
-
-    # Update integrator
-    integrator.fsallast = f(u, p, t+dt)
-    integrator.destats.nf += 1
-    integrator.k[1] = integrator.fsalfirst
-    integrator.k[2] = integrator.fsallast
-    integrator.u = u
-
-    cache.step += 1
+  max_len_cb = DiffEqBase.max_vector_callback_length(callbacks_internal)
+  if max_len_cb isa VectorContinuousCallback
+    callback_cache = DiffEqBase.CallbackCache(max_len_cb.len,uBottomEltype,uBottomEltype)
+  else
+    callback_cache = nothing
   end
 end
-
-# Predictor
-@muladd function OrdinaryDiffEq.perform_step!(integrator,cache::KadanoffBaym4Cache,repeat_step=false)
-  @unpack t,dt,uprev,u,f,p = integrator
-  @unpack k2,k3,k4 = cache
-  k1 = integrator.fsalfirst
-
-  u  = uprev + (dt/24)*(55*k1 - 59*k2 + 37*k3 - 9*k4)
-  cache.k4 = k3
-  cache.k3 = k2
-  cache.k2 = k1
-
-  integrator.fsallast = f(u, p, t+dt)
-  integrator.destats.nf += 1
-  integrator.k[1] = integrator.fsalfirst
-  integrator.k[2] = integrator.fsallast
-  integrator.u = u
-end
-

@@ -53,6 +53,8 @@ end
 const LesserOrGreater{T,S} = Union{LesserGF{T,S}, GreaterGF{T,S}}
 
 Base.size(G::LesserOrGreater) = size(G.data)
+Base.eltype(::LesserOrGreater{T,S}) where {T,S} = eltype(S)
+Base.eltype(::Type{<:LesserOrGreater{T,S}}) where {T,S} = eltype(S)
 Base.convert(T::Type{<:GreenFunction}, m::AbstractArray) = T(m)
 
 @inline function Base.getindex(G::LesserOrGreater, i::Integer, j::Integer) where {N}
