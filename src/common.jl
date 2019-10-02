@@ -4,22 +4,27 @@ export KB
 OrdinaryDiffEq.alg_order(::KB{algType}) where {algType} = OrdinaryDiffEq.alg_order(algType())
 OrdinaryDiffEq.isfsal(::KB) = false
 
+"""
+Caches hold previous values needed by the timesteppers
+"""
 # OrdinaryDiffEq.@cache
-mutable struct KBCache{algCacheType} <: OrdinaryDiffEq.OrdinaryDiffEqConstantCache
+mutable struct KBCaches{algCacheType} <: OrdinaryDiffEq.OrdinaryDiffEqConstantCache
   caches::Array{algCacheType, 1}
 end
 
-function OrdinaryDiffEq.alg_cache(::KB{algType},u,rate_prototype,uEltypeNoUnits,uBottomEltypeNoUnits,tTypeNoUnits,uprev,uprev2,f,t,dt,reltol_internal,p,calck,::Type{Val{false}}) where algType
-  cache = OrdinaryDiffEq.alg_cache(algType(),u,rate_prototype,uEltypeNoUnits,uBottomEltypeNoUnits,tTypeNoUnits,uprev,uprev2,f,t,dt,reltol_internal,p,calck,Val{false})
-  return KBCache{typeof(cache)}([cache])
+"""
+Recycle OrdinaryDiffEq's Adams-Bashfourth-Moulton caches
+"""
+function OrdinaryDiffEq.alg_cache(::KB{algType}, args...) where algType
+  cache = OrdinaryDiffEq.alg_cache(algType(), args...)
+  return KBCaches{typeof(cache)}([cache])
 end
 
-mutable struct KBIntegrator end
-
-# Code much like OrdinaryDiffEq.jl, which is licensed under the MIT "Expat" License
+"""
+Code much like OrdinaryDiffEq.jl, which is licensed under the MIT "Expat" License
+"""
 function DiffEqBase.__init(prob::ODEProblem, alg::KB, dt::Float64,
                            abstol=nothing, reltol=nothing,
-
   dtmax = eltype(prob.tspan)((prob.tspan[end]-prob.tspan[1])),
   callback=nothing)
 
@@ -36,6 +41,9 @@ function DiffEqBase.__init(prob::ODEProblem, alg::KB, dt::Float64,
   u = recursivecopy(prob.u0) # it's also ks
 
   uType = typeof(u)
+  @assert uType <: Vector
+  @assert eltype(uType) <: GreenFunction
+
   uBottomEltype = recursive_bottom_eltype(u)
   uBottomEltypeNoUnits = recursive_unitless_bottom_eltype(u)
 
@@ -147,4 +155,30 @@ end
 
 function OrdinaryDiffEq.perform_step!(integrator,cache::KBCache,repeat_step=false)
   @unpack t, dt = integrator
+end
+
+"""
+Euler-Heun's method
+
+y_{n+1} = y_{n} + Δt/2 (f(t, y_{n}) + f(t+Δt, ̃y_{n+1}))
+̃y_{n+1} = y_{n} + Δt f(t, y_{n})
+"""
+function EulerHeun!(integrator,cache,repeat_step=false)
+  @unpack t_idxs, dt_idxs, dt, u, f, p = integrator
+  @unpack f⁽¹⁾ = cache
+
+  u_cached = map(y -> y[t_idxs...], u)
+    
+  foreach(zip(u, f⁽¹⁾)) do (yᵢ, f⁽¹⁾ᵢ)
+    yᵢ[t_idxs...] += dt * f⁽¹⁾ᵢ # predictor
+  end
+
+  f⁽²⁾ = f((t_idxs .+ dt_idxs)..., u, p)
+#   integrator.destats.nf += 1
+
+  foreach(zip(u, u_cached, f⁽¹⁾, f⁽²⁾)) do (yᵢ, y′ᵢ,f⁽¹⁾ᵢ,f⁽²⁾ᵢ)
+    yᵢ[t_idxs...] = y′ᵢ # return for cached value
+    yᵢ[(t_idxs .+ dt_idxs)...] = y′ᵢ + dt/2 * (f⁽¹⁾ᵢ + f⁽²⁾ᵢ) # corrector
+  end
+  u
 end
