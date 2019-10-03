@@ -149,12 +149,60 @@ function DiffEqBase.__init(prob::ODEProblem, alg::KB, dt::Float64,
   beta1 = OrdinaryDiffEq.beta1_default(alg,beta2)
 end
 
-function OrdinaryDiffEq.initialize!(integrator,cache::KBCache)
-  assert false
+@with_kw mutable struct KBIntegrator
+  t_idxs
+  dt_idxs
+  dt
+  u
+  f
+  fsalfirst
+  fsallast
+  k
+  p = nothing
+  u_modified::Bool = false
+end
+
+function OrdinaryDiffEq.initialize!(integrator,caches::KBCaches{OrdinaryDiffEq.ABM43ConstantCache})
+  @assert false
 end
 
 function OrdinaryDiffEq.perform_step!(integrator,cache::KBCache,repeat_step=false)
   @unpack t, dt = integrator
+
+
+# AB4 predictor
+@muladd function AB4Predictor!(integrator,cache::OrdinaryDiffEq.AB4ConstantCache,repeat_step=false)
+  @unpack t_idxs, dt_idxs, dt, u, f, p = integrator
+  @unpack k2,k3,k4 = cache
+  k1 = integrator.fsalfirst
+
+  @assert !integrator.u_modified
+
+  cnt = cache.step
+  if cache.step <= 3
+    cache.step += 1
+    u = EulerHeun!(integrator,cache)
+    if cnt == 1
+      cache.k4 = k1
+    elseif cnt == 2
+      cache.k3 = k1
+    else
+      cache.k2 = k1
+    end
+  else
+    foreach(zip(u,k1,k2,k3,k4)) do (uᵢ,k1ᵢ,k2ᵢ,k3ᵢ,k4ᵢ)
+      uᵢ = uᵢ[t_idxs...] + (dt/24)*(55*k1ᵢ - 59*k2ᵢ + 37*k3ᵢ - 9*k4ᵢ)
+    end
+    cache.k4 = k3
+    cache.k3 = k2
+    cache.k2 = k1
+  end
+
+  integrator.fsallast = f(u, p, (t_idxs .+ dt_idxs)...)
+  # integrator.destats.nf += 1
+  # integrator.k[1] = integrator.fsalfirst
+  # integrator.k[2] = integrator.fsallast
+  integrator.u = u
 end
 
 """
@@ -165,20 +213,20 @@ y_{n+1} = y_{n} + Δt/2 (f(t, y_{n}) + f(t+Δt, ̃y_{n+1}))
 """
 function EulerHeun!(integrator,cache,repeat_step=false)
   @unpack t_idxs, dt_idxs, dt, u, f, p = integrator
-  @unpack f⁽¹⁾ = cache
+  k1 = integrator.fsalfirst
 
   u_cached = map(y -> y[t_idxs...], u)
     
-  foreach(zip(u, f⁽¹⁾)) do (yᵢ, f⁽¹⁾ᵢ)
-    yᵢ[t_idxs...] += dt * f⁽¹⁾ᵢ # predictor
+  foreach(zip(u, k1)) do (yᵢ, k1ᵢ)
+    yᵢ[t_idxs...] += dt * k1ᵢ # predictor
   end
 
-  f⁽²⁾ = f((t_idxs .+ dt_idxs)..., u, p)
-#   integrator.destats.nf += 1
+  k2 = f(u, p, (t_idxs .+ dt_idxs)...)
+  # integrator.destats.nf += 1
 
-  foreach(zip(u, u_cached, f⁽¹⁾, f⁽²⁾)) do (yᵢ, y′ᵢ,f⁽¹⁾ᵢ,f⁽²⁾ᵢ)
-    yᵢ[t_idxs...] = y′ᵢ # return for cached value
-    yᵢ[(t_idxs .+ dt_idxs)...] = y′ᵢ + dt/2 * (f⁽¹⁾ᵢ + f⁽²⁾ᵢ) # corrector
+  foreach(zip(u, u_cached, k1, k2)) do (yᵢ, y′ᵢ,k1ᵢ,k2ᵢ)
+    yᵢ[t_idxs...] = y′ᵢ # reset to cached value
+    yᵢ[(t_idxs .+ dt_idxs)...] = y′ᵢ + dt/2 * (k1ᵢ + k2ᵢ) # corrector
   end
   u
 end
