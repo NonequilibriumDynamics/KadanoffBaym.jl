@@ -2,31 +2,26 @@ struct KB{algType} <: OrdinaryDiffEq.OrdinaryDiffEqAlgorithm end
 export KB
 
 OrdinaryDiffEq.alg_order(::KB{algType}) where {algType} = OrdinaryDiffEq.alg_order(algType())
-# OrdinaryDiffEq.isfsal(::KB) = false
-
-"""
-Caches hold previous values needed by the timesteppers
-"""
-# OrdinaryDiffEq.@cache
-mutable struct KBCaches{algCacheType} <: OrdinaryDiffEq.OrdinaryDiffEqConstantCache
-  caches::Array{algCacheType, 1}
-end
+OrdinaryDiffEq.isfsal(::KB) = true
 
 """
 Recycle OrdinaryDiffEq's Adams-Bashfourth-Moulton caches
 """
 function OrdinaryDiffEq.alg_cache(::KB{algType}, args...) where algType
   cache = OrdinaryDiffEq.alg_cache(algType(), args...)
-  return KBCaches{typeof(cache)}([cache])
+  return KBCaches{typeof(cache)}([cache]) # repeat cache
 end
 
 """
 Code much like OrdinaryDiffEq.jl, which is licensed under the MIT "Expat" License
 """
-function DiffEqBase.__init(prob::ODEProblem, alg::KB, dt::Float64,
-                           abstol=nothing, reltol=nothing,
-  dtmax = eltype(prob.tspan)((prob.tspan[end]-prob.tspan[1])),
-  callback=nothing)
+function DiffEqBase.__init(prob::ODEProblem,
+                           alg::KB,
+                           dt::Float64,
+                           abstol=nothing,
+                           reltol=nothing,
+                           dtmax = eltype(prob.tspan)((prob.tspan[end]-prob.tspan[1])),
+                           callback=nothing)
 
   tType = eltype(prob.tspan)
   tspan = prob.tspan
@@ -35,6 +30,10 @@ function DiffEqBase.__init(prob::ODEProblem, alg::KB, dt::Float64,
   t = tspan[1]
   t′ = tspan[1]
 
+  if (((!(typeof(alg) <: OrdinaryDiffEqAdaptiveAlgorithm) && !(typeof(alg) <: OrdinaryDiffEqCompositeAlgorithm) && !(typeof(alg) <: DAEAlgorithm)) || !adaptive) && dt == tType(0) && isempty(tstops)) && !(typeof(alg) <: Union{FunctionMap,LinearExponential})
+      error("Fixed timestep methods require a choice of dt or choosing the tstops")
+  end
+  
   f = prob.f
   p = prob.p
 
@@ -162,95 +161,30 @@ end
   u_modified::Bool = false
 end
 
-function OrdinaryDiffEq.initialize!(integrator,caches::KBCaches{OrdinaryDiffEq.ABM43ConstantCache})
-  @assert false
-end
-
-function OrdinaryDiffEq.perform_step!(integrator,caches::KBCaches{OrdinaryDiffEq.ABM43ConstantCache},repeat_step=false)
-  @unpack t_idxs, dt_idxs, dt, u, f, p = integrator
-
-  @assert !integrator.u_modified
-
-  for t′ in 1:t
-    cache = caches.caches[t′]
+function DiffEqBase.solve!(integrator::KBIntegrator)
+  @inbounds while !isempty(integrator.opts.tstops)
+    # while integrator.tdir * integrator.t < top(integrator.opts.tstops)
+    #   loopheader!(integrator)
+    #   if check_error!(integrator) != :Success
+    #     return integrator.sol
+    #   end
+    #   perform_step!(integrator,integrator.cache)
+    #   loopfooter!(integrator)
+    #   if isempty(integrator.opts.tstops)
+    #     break
+    #   end
+    # end
+    # handle_tstop!(integrator)
   end
+  # postamble!(integrator)
 
-  integrator.fsallast = f(u, p, t+dt)
-  # integrator.destats.nf += 1
-  # integrator.k[1] = integrator.fsalfirst
-  # integrator.k[2] = integrator.fsallast
-end
+  # f = integra tor.sol.prob.f
 
-"""
-Adams-Bashfourth-Moulton 43 predictor corrector method
-
-y_{n+1} = y_{n} + Δt/24 [9 f(̃y_{n+1}) + 19 f(y_{n}) - 5 f(y_{n-1}) + f(y_{n-2})]
-̃y_{n+1} = y_{n} + Δt/24 [55 f(y_{n}) - 59 f(y_{n-1}) + 37 f(y_{n-2}) - 9 f(y_{n-3})]
-"""
-@muladd function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,repeat_step=false)
-  @unpack t_idxs, dt_idxs, dt, u, f, p = integrator
-  k1 = integrator.fsalfirst
-  @unpack k2,k3,k4 = cache
-
-  @assert !integrator.u_modified
-
-  if cache.step <= 3 # Euler-Heun
-    eulerHeun!(integrator, cache)
-
-    if cache.step == 1
-      cache.k4 = k1
-    elseif cache.step == 2
-      cache.k3 = k1
-    else
-      cache.k2 = k1
-    end
-    cache.step += 1
-  else # Adams-Bashfourth-Moulton 4-3
-    u′ = map(uᵢ -> uᵢ[t_idxs...], u)  # caches u
-
-    foreach(zip(u,k1,k2,k3,k4)) do (uᵢ,k1ᵢ,k2ᵢ,k3ᵢ,k4ᵢ)
-      uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/24) * (55*k1ᵢ - 59*k2ᵢ + 37*k3ᵢ - 9*k4ᵢ)
-    end
-    
-    k = f(u, p, (t_idxs .+ dt_idxs)...)
-    # integrator.destats.nf += 1
-
-    foreach(zip(u,u′,k,k1,k2,k3)) do (uᵢ,u′ᵢ,kᵢ,k1ᵢ,k2ᵢ,k3ᵢ)
-      uᵢ[t_idxs...] = u′ᵢ # reset to cached value
-      uᵢ[(t_idxs .+ dt_idxs)...] = u′ᵢ + (dt/24) * (9*kᵢ + 19*k1ᵢ - 5*k2ᵢ + k3ᵢ) # Corrector
-    end
-
-    # Update cache for ADM
-    cache.k4 = k3
-    cache.k3 = k2
-    cache.k2 = k1
-  end
-
-  integrator.fsallast = f(u, p, (t_idxs .+ dt_idxs)...)
-  # integrator.destats.nf += 1
-end
-
-"""
-Euler-Heun's method
-
-y_{n+1} = y_{n} + Δt/2 [f(t+Δt, ̃y_{n+1}) + f(t, y_{n})]
-̃y_{n+1} = y_{n} + Δt f(t, y_{n})
-"""
-function eulerHeun!(integrator,cache,repeat_step=false)
-  @unpack t_idxs, dt_idxs, dt, u, f, p = integrator
-  k1 = integrator.fsalfirst
-
-  u′ = map(uᵢ -> uᵢ[t_idxs...], u) # caches u
-    
-  foreach(zip(u, k1)) do (uᵢ, k1ᵢ)
-    uᵢ[t_idxs...] += dt * k1ᵢ # predictor
-  end
-
-  k = f(u, p, (t_idxs .+ dt_idxs)...)
-  # integrator.destats.nf += 1
-
-  foreach(zip(u,u′,k,k1)) do (uᵢ,u′ᵢ,kᵢ,k1ᵢ)
-    uᵢ[t_idxs...] = u′ᵢ # reset to cached value
-    uᵢ[(t_idxs .+ dt_idxs)...] = u′ᵢ + (dt/2) * (kᵢ + k1ᵢ) # corrector
-  end 
+  # if DiffEqBase.has_analytic(f)
+  #   DiffEqBase.calculate_solution_errors!(integrator.sol;timeseries_errors=integrator.opts.timeseries_errors,dense_errors=integrator.opts.dense_errors)
+  # end
+  # if integrator.sol.retcode != :Default
+  #   return integrator.sol
+  # end
+  # integrator.sol = DiffEqBase.solution_new_retcode(integrator.sol,:Success)
 end

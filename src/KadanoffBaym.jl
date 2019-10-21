@@ -6,14 +6,15 @@ using LinearAlgebra
 using Parameters
 using MuladdMacro
 using RecursiveArrayTools
+using EllipsisNotation
 
-using OrdinaryDiffEq
 # using Reexport
 # @reexport using OrdinaryDiffEq
+using OrdinaryDiffEq
 
 include("gf.jl")
 
+include("core.jl")
 include("common.jl")
-# export KadanoffBaym
 
 end
