@@ -163,22 +163,22 @@ end
 
 function DiffEqBase.solve!(integrator::KBIntegrator)
   @inbounds while !isempty(integrator.opts.tstops)
-    # while integrator.tdir * integrator.t < top(integrator.opts.tstops)
+    while integrator.tdir * integrator.t < top(integrator.opts.tstops)
     #   loopheader!(integrator)
     #   if check_error!(integrator) != :Success
     #     return integrator.sol
     #   end
-    #   perform_step!(integrator,integrator.cache)
+      perform_step!(integrator,integrator.cache)
     #   loopfooter!(integrator)
-    #   if isempty(integrator.opts.tstops)
-    #     break
-    #   end
-    # end
-    # handle_tstop!(integrator)
+      if isempty(integrator.opts.tstops)
+        break
+      end
+    end
+    handle_tstop!(integrator) # NOTE: Not tested
   end
   # postamble!(integrator)
 
-  # f = integra tor.sol.prob.f
+  # f = integrator.sol.prob.f
 
   # if DiffEqBase.has_analytic(f)
   #   DiffEqBase.calculate_solution_errors!(integrator.sol;timeseries_errors=integrator.opts.timeseries_errors,dense_errors=integrator.opts.dense_errors)
@@ -186,5 +186,5 @@ function DiffEqBase.solve!(integrator::KBIntegrator)
   # if integrator.sol.retcode != :Default
   #   return integrator.sol
   # end
-  # integrator.sol = DiffEqBase.solution_new_retcode(integrator.sol,:Success)
+  integrator.sol = DiffEqBase.solution_new_retcode(integrator.sol,:Success) # NOTE: Not tested
 end

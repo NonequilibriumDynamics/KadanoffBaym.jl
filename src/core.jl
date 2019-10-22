@@ -42,7 +42,6 @@ function perform_step!(integrator,caches::KBCaches{OrdinaryDiffEq.ABM43ConstantC
   # integrator.t_idxs = t, t′ = (t′,t′) .+ reverse(dt_idxs)
   # eulerHeun!(integrator, nothing)
 
-  t_idxs .+= (1, 1)
 end
 
 """
