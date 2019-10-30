@@ -2,7 +2,7 @@ abstract type GreenFunction end
 
 # """
 # Defined as
-#     G^<(t,t') = -i < a^{\dagger}(t) a(t') > for t > t'
+#     G^<(t,t') = -i < a^{\dagger}(t') a(t) > for t <= t'
 # """
 struct LesserGF{T,S<:AbstractArray{<:T}} <: GreenFunction
   data::S
@@ -30,7 +30,7 @@ end
 
 # """
 # Defined as
-#     G^>(t,t') = +i < a^{\dagger}(t') a(t) > for t <= t'
+#     G^>(t,t') = -i < a(t)a^{\dagger}(t')  > for t > t'
 # """
 struct GreaterGF{T,S<:AbstractArray{<:T}} <: GreenFunction
   data::S
@@ -48,7 +48,6 @@ end
 
 GreaterGF(::Type{T}, method, dims::Int...) where {T} = GreaterGF(T(method, dims))
 GreaterGF(::Type{T}, dims::Int...) where {T} = GreaterGF(T, undef, dims...)
-# GreaterGF()
 
 function greaterGF_type(::Type{T}) where {S<:Number, T<:AbstractArray{S}}
   return GreaterGF{S, T}
@@ -64,53 +63,18 @@ Base.eltype(::LesserOrGreater{T,S}) where {T,S} = eltype(S)
 Base.eltype(::Type{<:LesserOrGreater{T,S}}) where {T,S} = eltype(S)
 Base.convert(T::Type{<:GreenFunction}, m::AbstractArray) = T(m)
 
-Base.getindex(A::LesserOrGreater, I::Vararg{Int,N}) where {N} = Base.getindex(A.data, I...) #get(A.data, I, zero(eltype(A)))
+Base.getindex(A::LesserOrGreater, I...) = Base.getindex(A.data, I...) #get(A.data, I, zero(eltype(A)))
+Base.setindex!(A::LesserOrGreater, v, I...) = begin F, L = front2(I), last2(I); _setindex!(A, v, L, F...) end
 
-# @inline function Base.getindex(A::LesserOrGreater, i::Integer, j::Integer) where {N}
-#   @boundscheck Base.checkbounds(A.data, i, j)
-#   @inbounds if i == j
-#       return getindex(A.data, i, j)
-#   elseif (A isa LesserGF) == (i > j)
-#       return getindex(A.data, i, j)
-#   else
-#       return -adjoint(getindex(G.data, j, i))
-#   end
-# end
+_setindex!(A::LesserGF, v, L::Tuple{T,U}, F...) where {T,U} = begin @assert <=(L...) "t>t′"; __setindex!(A, v, L, F...) end
+_setindex!(A::GreaterGF, v, L::Tuple{T,U}, F...) where {T,U} = begin @assert >=(L...) "t<t"; __setindex!(A, v, L, F...) end
 
-# @inline function Base.getindex(A::LesserOrGreater, i::Integer, j::Integer, I...)
-#   @boundscheck Base.checkbounds(A.data, i, j)
-#   @inbounds if i == j
-#       return getindex(A.data, i, j, I...)
-#   elseif (A isa LesserGF) == (i > j)    
-#       return getindex(A.data, i, j, I...)
-#   else
-#       return -adjoint(getindex(A.data, j, i, I...))
-#   end
-# end
-
-function Base.setindex!(A::LesserOrGreater, v, i::Integer, j::Integer)
-  @inbounds if i == j
-    setindex!(A.data, v, i, j)
-  # elseif (A isa LesserGF) == (i > j)
-  #     setindex!(A.data, v, i, j)
-  # else
-  #     setindex!(A.data, -adjoint(v), j, i)
+function __setindex!(A::LesserOrGreater, v, L::Tuple{T,U}, F...) where {T,U}
+  if ==(L...)
+    setindex!(A.data, v, F..., L...)
   else 
-    setindex!(A.data, v, i, j)
-    setindex!(A.data, -adjoint(v), j, i)
-  end
-end
-
-function Base.setindex!(A::LesserOrGreater, v, i::Integer, j::Integer, I...)
-  @inbounds if i == j
-    setindex!(A.data, v, i, j, I...)
-  # elseif (A isa LesserGF) == (i > j)
-  #     setindex!(A.data, v, i, j, I...)
-  # else
-  #     setindex!(A.data, -adjoint(v), j, i, I...)
-  else 
-    setindex!(A.data, v, i, j, I...)
-    setindex!(A.data, -adjoint(v), j, i, I...)
+    setindex!(A.data, v, F..., L...)
+    setindex!(A.data, -adjoint(v), F..., reverse(L)...)
   end
 end
 

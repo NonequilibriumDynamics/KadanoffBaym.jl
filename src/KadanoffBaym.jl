@@ -12,6 +12,7 @@ using EllipsisNotation
 # @reexport using OrdinaryDiffEq
 using OrdinaryDiffEq
 
+include("utils.jl")
 include("gf.jl")
 
 include("core.jl")
