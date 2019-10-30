@@ -58,16 +58,21 @@ end
 
 const LesserOrGreater{T,S} = Union{LesserGF{T,S}, GreaterGF{T,S}}
 
-Base.size(A::LesserOrGreater) = size(A.data)
 Base.eltype(::LesserOrGreater{T,S}) where {T,S} = eltype(S)
 Base.eltype(::Type{<:LesserOrGreater{T,S}}) where {T,S} = eltype(S)
 Base.convert(T::Type{<:GreenFunction}, m::AbstractArray) = T(m)
 
+Base.size(A::LesserOrGreater) = size(A.data)
+Base.length(A::LesserOrGreater) = length(A.data)
+
+Base.firstindex(A::LesserOrGreater) = firstindex(A.data)
+Base.lastindex(A::LesserOrGreater) = lastindex(A.data)
+
 Base.getindex(A::LesserOrGreater, I...) = Base.getindex(A.data, I...) #get(A.data, I, zero(eltype(A)))
-Base.setindex!(A::LesserOrGreater, v, I...) = begin F, L = front2(I), last2(I); _setindex!(A, v, L, F...) end
+Base.setindex!(A::LesserOrGreater, v, I...) = _setindex!(A, v, last2(I), front2(I)...)
 
 _setindex!(A::LesserGF, v, L::Tuple{T,U}, F...) where {T,U} = begin @assert <=(L...) "t>t′"; __setindex!(A, v, L, F...) end
-_setindex!(A::GreaterGF, v, L::Tuple{T,U}, F...) where {T,U} = begin @assert >=(L...) "t<t"; __setindex!(A, v, L, F...) end
+_setindex!(A::GreaterGF, v, L::Tuple{T,U}, F...) where {T,U} = begin @assert >=(L...) "t<t′"; __setindex!(A, v, L, F...) end
 
 function __setindex!(A::LesserOrGreater, v, L::Tuple{T,U}, F...) where {T,U}
   if ==(L...)
@@ -77,6 +82,8 @@ function __setindex!(A::LesserOrGreater, v, L::Tuple{T,U}, F...) where {T,U}
     setindex!(A.data, -adjoint(v), F..., reverse(L)...)
   end
 end
+
+Base.iterate(A::LesserOrGreater, state=1) = iterate(A.data, state)
 
 # struct RetardedGF <: GreenFunction end
 # struct AdvancedGF <: GreenFunction end
