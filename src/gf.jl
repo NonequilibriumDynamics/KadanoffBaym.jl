@@ -143,6 +143,21 @@ for g in (:LesserGF, :GreaterGF)
     # end
   end
 
-  @eval (Base.+)(A::$g, B::$g...) = Base.+(A.data, getfield.(B,:data)...)
+  @eval Base.:+(A::$g, B::$g...) = Base.+(A.data, getfield.(B,:data)...)
 end
 
+function Base.show(io::IO, x::LesserOrGreater)
+  if get(io, :compact, false) || get(io, :typeinfo, nothing) == LesserOrGreater
+    Base.show_default(IOContext(io, :limit => true), x)
+  else
+    # dump(IOContext(io, :limit => true), p, maxdepth=1)
+    for field in fieldnames(typeof(x))
+      if field === :data
+        print(io, "data: ")
+        Base.show(io, MIME"text/plain"(), x.data)
+      else
+        Base.show(io, getfield(x, field))
+      end
+    end
+  end
+end
