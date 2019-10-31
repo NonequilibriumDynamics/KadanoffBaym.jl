@@ -1,46 +1,64 @@
 using Test
 
-include("../src/KadanoffBaym.jl")
+using LinearAlgebra
+using EllipsisNotation
+include("../src/utils.jl")
+include("../src/gf.jl")
 
-N = 3
+N = 10
 
-data = rand(Complex{Float64}, N, N)
+# Test 2d getindex setindex!
+data = rand(ComplexF64, N, N)
 data -= transpose(data)
 
-lgf = KadanoffBaym.LesserGF(data)
-ggf = KadanoffBaym.GreaterGF(data)
+lgf = LesserGF(copy(data))
+ggf = GreaterGF(copy(data))
 
 v = 30 + 30im
 lgf[2, N] = v
-ggf[2, N] = v
+ggf[N, 2] = v
 
-@test lgf[N, 2] == -adjoint(v)
-@test ggf[N, 2] == -adjoint(v)
+@test lgf.data[N, 2] == -adjoint(v)
+@test ggf.data[2, N] == -adjoint(v)
 
-@test lgf[2, N] == -adjoint(lgf[N, 2])
-@test ggf[2, N] == -adjoint(ggf[N, 2])
+@test lgf[2, N] == -adjoint(lgf.data[N, 2])
+@test ggf.data[2, N] == -adjoint(ggf[N, 2])
 
-# For special index set
-@test lgf.data[2, N] != lgf.data[N, 2]
-@test ggf.data[2, N] != ggf.data[N, 2]
-
-
-data = rand(Complex{Float64}, N, N, N, N)
+# Test 4d getindex setindex!
+data = rand(ComplexF64, N, N, N, N)
 data -= permutedims(data, [1,2,4,3])
 
-lgf = KadanoffBaym.LesserGF(data)
-ggf = KadanoffBaym.GreaterGF(data)
+lgf = LesserGF(copy(data))
+ggf = GreaterGF(copy(data))
 
-v = rand(Complex{Float64}, N, N)
-lgf[2, N, :, :] = v
-ggf[2, N, :, :] = v
+v = rand(ComplexF64, N, N)
+lgf[:, :, 2, N] = v
+ggf[:, :, N, 2] = v
 
-@test lgf[N, 2, :, :] == -adjoint(v)
-@test ggf[N, 2, :, :] == -adjoint(v)
+@test lgf.data[:, :, N, 2] == -adjoint(v)
+@test ggf.data[:, :, 2, N] == -adjoint(v)
 
-@test lgf[2, N, :, :] == -adjoint(lgf[N, 2, :, :])
-@test ggf[2, N, :, :] == -adjoint(ggf[N, 2, :, :])
+@test lgf[:, :, 2, N] == -adjoint(lgf.data[:, :, N, 2])
+@test ggf.data[:, :, 2, N] == -adjoint(ggf[:, :, N, 2])
 
-# For special index set
-@test lgf.data[2, N, :, :] != lgf.data[N, 2, :, :]
-@test ggf.data[2, N, :, :] != ggf.data[N, 2, :, :]
+# Test AbstractArray-like behaviour
+data = rand(ComplexF64, N, N, N, N)
+gf = LesserGF(copy(data))
+
+@test (-gf).data == (-data)
+@test (conj(gf)).data == conj(data)
+@test (real(gf)).data == real(data)
+@test (imag(gf)).data == imag(data)
+# @test (adjoint(gf)).data == adjoint(data)
+# @test (transpose(gf)).data == transpose(data)
+# @test (inv(gf)).data == inv(data)
+
+temp = rand(ComplexF64, N, N)
+
+gf[:,:,1,2] = temp
+data[:,:,1,2] = temp; data[:,:,2,1] = -adjoint(temp)
+@test gf.data == data
+
+gf[1,1,:,:] = temp
+data[1,1,:,:] = temp
+@test gf.data == data

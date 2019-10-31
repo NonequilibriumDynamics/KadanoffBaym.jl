@@ -71,8 +71,9 @@ Base.lastindex(A::LesserOrGreater) = lastindex(A.data)
 Base.getindex(A::LesserOrGreater, I...) = Base.getindex(A.data, I...) #get(A.data, I, zero(eltype(A)))
 Base.setindex!(A::LesserOrGreater, v, I...) = _setindex!(A, v, last2(I), front2(I)...)
 
-_setindex!(A::LesserGF, v, L::Tuple{T,U}, F...) where {T,U} = begin @assert <=(L...) "t>t′"; __setindex!(A, v, L, F...) end
-_setindex!(A::GreaterGF, v, L::Tuple{T,U}, F...) where {T,U} = begin @assert >=(L...) "t<t′"; __setindex!(A, v, L, F...) end
+_setindex!(A::LesserGF, v, L::NTuple{2, Int64}, F...) = begin @assert <=(L...) "t>t′"; __setindex!(A, v, L, F...) end
+_setindex!(A::GreaterGF, v, L::NTuple{2, Int64}, F...) = begin @assert >=(L...) "t<t′"; __setindex!(A, v, L, F...) end
+_setindex!(A::LesserOrGreater, v, L::Tuple{T, U}, F...) where {T, U} = __setindex!(A, v, L, F...)
 
 function __setindex!(A::LesserOrGreater, v, L::Tuple{T,U}, F...) where {T,U}
   if ==(L...)

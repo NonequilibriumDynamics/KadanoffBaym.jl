@@ -3,7 +3,7 @@
 _front2() = throw(ArgumentError("Cannot call front2 on an empty tuple."))
 _front2(v) = throw(ArgumentError("Cannot call front2 on 1-element tuple."))
 _front2(v1,v2) = ()
-@inline function _front2(v, t...) = (v, _front2(t...)...)
+@inline _front2(v, t...) = (v, _front2(t...)...)
 
 # Return a `Tuple` consisting of all but the 2 first components of `t`.
 @inline tail2(t::Tuple) = _tail2(t...)
