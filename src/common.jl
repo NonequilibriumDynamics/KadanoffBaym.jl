@@ -5,6 +5,15 @@ OrdinaryDiffEq.alg_order(::KB{algType}) where {algType} = OrdinaryDiffEq.alg_ord
 OrdinaryDiffEq.isfsal(::KB) = true
 
 """
+Caches hold previous values needed by the timesteppers
+"""
+# OrdinaryDiffEq.@cache
+mutable struct KBCaches{algCacheType} <: OrdinaryDiffEq.OrdinaryDiffEqConstantCache
+  line::Vector{algCacheType} # stepping through vertical or horizontal lines in the R^2 t-plane
+  diagonal::algCacheType # stepping diagonally through the R^2 t-plane
+end
+
+"""
 Recycle OrdinaryDiffEq's Adams-Bashfourth-Moulton caches
 """
 function OrdinaryDiffEq.alg_cache(::KB{algType}, args...) where algType
@@ -13,7 +22,7 @@ function OrdinaryDiffEq.alg_cache(::KB{algType}, args...) where algType
 end
 
 """
-Code much like OrdinaryDiffEq.jl, which is licensed under the MIT "Expat" License
+Code much like __init from OrdinaryDiffEq.jl, which is licensed under the MIT "Expat" License
 """
 function DiffEqBase.__init(prob::ODEProblem,
                            alg::KB,
