@@ -133,3 +133,21 @@ function Base.show(io::IO, x::LesserOrGreater)
     end
   end
 end
+
+function Base.resize!(A::LesserOrGreater, t::NTuple{2,Int})
+  if eltype(A) <: AbstractArray
+    newdata = fill(eltype(A)(undef,size(first(A))...),t...)
+  else
+    newdata = zeros(eltype(A),front2(size(A))...,t...)
+  end
+
+  prev_last2 = last2(size(A))
+
+  for t in 1:1:prev_last2[1]
+    for t′ in 1:1:prev_last2[2]
+      newdata[..,t,t′] = A.data[..,t,t′]
+    end
+  end
+  
+  return typeof(A)(newdata)
+end
