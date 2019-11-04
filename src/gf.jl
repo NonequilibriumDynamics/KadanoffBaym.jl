@@ -58,7 +58,6 @@ end
 
 const LesserOrGreater{T,S} = Union{LesserGF{T,S}, GreaterGF{T,S}}
 
-Base.eltype(::LesserOrGreater{T,S}) where {T,S} = eltype(S)
 Base.eltype(::Type{<:LesserOrGreater{T,S}}) where {T,S} = eltype(S)
 Base.convert(T::Type{<:GreenFunction}, m::AbstractArray) = T(m)
 
@@ -85,6 +84,7 @@ function __setindex!(A::LesserOrGreater, v, L::Tuple{T,U}, F...) where {T,U}
 end
 
 Base.iterate(A::LesserOrGreater, state=1) = iterate(A.data, state)
+Base.copy(A::LesserOrGreater) = typeof(A)(copy(A.data))
 
 # struct RetardedGF <: GreenFunction end
 # struct AdvancedGF <: GreenFunction end
@@ -125,7 +125,7 @@ function Base.show(io::IO, x::LesserOrGreater)
     # dump(IOContext(io, :limit => true), p, maxdepth=1)
     for field in fieldnames(typeof(x))
       if field === :data
-        print(io, "data: ")
+        print(io, "\ndata: ")
         Base.show(io, MIME"text/plain"(), x.data)
       else
         Base.show(io, getfield(x, field))
