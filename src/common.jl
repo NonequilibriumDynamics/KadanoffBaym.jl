@@ -1,9 +1,10 @@
 struct KB{algType} <: DiffEqBase.AbstractODEAlgorithm end
 export KB
 
-OrdinaryDiffEq.isadaptive(::KB{algType}) where {algType} = OrdinaryDiffEq.isadaptive(algType())
-OrdinaryDiffEq.alg_order(::KB{algType}) where {algType} = OrdinaryDiffEq.alg_order(algType())
-OrdinaryDiffEq.isfsal(::KB) = true
+alg_type(::KB{algType}) where {algType} = algType()
+# OrdinaryDiffEq.isadaptive(::KB{algType}) where {algType} = OrdinaryDiffEq.isadaptive(algType())
+# OrdinaryDiffEq.alg_order(::KB{algType}) where {algType} = OrdinaryDiffEq.alg_order(algType())
+# OrdinaryDiffEq.isfsal(::KB) = true
 
 """
 Caches hold previous values needed by the timesteppers
@@ -26,13 +27,13 @@ end
 Code much like OrdinaryDiffEq.jl, which is licensed under the MIT "Expat" License
 """
 function DiffEqBase.__init(prob::ODEProblem,
-                           alg::KB,
+                           alg::KB{algType},
                            dt::Float64,
                            abstol=nothing,
                            reltol=nothing,
-                           dtmax = eltype(prob.tspan)((prob.tspan[end]-prob.tspan[1])),
-                           adaptive=OrdinaryDiffEq.isadaptive(alg),
-                           callback=nothing)
+                           adaptive=OrdinaryDiffEq.isadaptive(algType()),
+                           dtmax = eltype(prob.tspan)(prob.tspan[end]-prob.tspan[1]),
+                           callback=nothing) where {algType}
 
   tType = eltype(prob.tspan)
   tspan = prob.tspan
@@ -49,14 +50,15 @@ function DiffEqBase.__init(prob::ODEProblem,
   p = prob.p
 
   u = recursivecopy(prob.u0) # it's also ks
-
+    
   uType = typeof(u)
   @assert uType <: ArrayPartition "Functions need to be inside an ArrayPartition"
   @assert eltype(u.x) <: GreenFunction "Can only timestep Green functions!"
-    
+
   uBottomEltype = recursive_bottom_eltype(u)
   uBottomEltypeNoUnits = recursive_unitless_bottom_eltype(u)
   uEltypeNoUnits = recursive_unitless_eltype(u)
+  tTypeNoUnits   = typeof(one(tType))
   
   if abstol === nothing
     if uBottomEltypeNoUnits == uBottomEltype
@@ -85,10 +87,12 @@ function DiffEqBase.__init(prob::ODEProblem,
   else
     rate_prototype = u/oneunit(tType)
   end
-  
   rateType = typeof(rate_prototype)
-  
-  callbacks_internal = OrdinaryDiffEq.CallbackSet(callback,prob.callback)
+
+  tstops_internal, saveat_internal, d_discontinuities_internal = OrdinaryDiffEq.tstop_saveat_disc_handling(
+    tType[], tType[], tType[], tspan)
+
+  callbacks_internal = OrdinaryDiffEq.CallbackSet(callback)
 
   max_len_cb = DiffEqBase.max_vector_callback_length(callbacks_internal)
   if max_len_cb isa VectorContinuousCallback
@@ -98,41 +102,36 @@ function DiffEqBase.__init(prob::ODEProblem,
   end
     
   if !adaptive
-    steps = ceil(Int,(tspan[2]-tspan[1])/dt) + 1
-    ts = Matrix{Tuple{tType,tType}}(undef, steps, steps)
-    timeseries = Matrix{typeof(prob.u0)}(undef,0,0)
+    cache = alg_cache(alg,0,recursivecopy(u),0,0,0,0,0,0,0,0,0,0,0,Val(false))
+    
+    steps = Int(ceil(Int,(tspan[2]-tspan[1])/dt) + 1)
+    
+    ts = Matrix{Tuple{tType,tType}}(undef,steps,steps)
+    ts[1,1] = (t, t′)
+    
+    timeseries = recursivecopy(u)
+    timeseries = uType(map(g->resize(g, (11,11)), timeseries.x))
   else
-    ts = Matrix{tType}(undef,2,2)
     @assert false "Not yet supported"
   end
   
-  ts[1,1] = (t, t′)
-  timeseries[1,1] = u
-    
-  qmin = OrdinaryDiffEq.qmin_default(alg)
-  QT = tTypeNoUnits <: Integer ? typeof(qmin) : tTypeNoUnits
-    
-  k = rateType[]
-    
-  calck = (callback !== nothing && callback != CallbackSet()) || # Empty callback
-                                   (prob.callback !== nothing && prob.callback != CallbackSet()) || # Empty prob.callback
-                                   (!isempty(setdiff(saveat,tstops)) || true), # and no dense output
+  QT = tTypeNoUnits <: Integer ? typeof(OrdinaryDiffEq.qmin_default(algType())) : tTypeNoUnits
 
-  if OrdinaryDiffEq.uses_uprev(alg, adptive) || calck
-    uprev = recursivecopy(u)
-  else
-    uprev = u
-  end
+  id = OrdinaryDiffEq.InterpolationData(f,timeseries,ts,[],true,cache)
+  beta2=OrdinaryDiffEq.beta2_default(algType())
+  beta1=OrdinaryDiffEq.beta1_default(algType(),beta2)
+  
+#   opts = []
+#   sol = DiffEqBase.build_solution(prob,alg,ts,timeseries,
+#                                   dense=true,[],interp=id,
+#                                   calculate_error=false,destats=DiffEqBase.DEStats(0))
+  
+#   OrdinaryDiffEq.initialize_callbacks!(integrator, true)
+#   OrdinaryDiffEq.initialize!(integrator, integrator.cache)
 
-  if !OrdinaryDiffEq.alg_extrapolates(alg)
-    uprev2 = uprev
-  end
-    
-  cache = OrdinaryDiffEq.alg_cache(alg,u,rate_prototype,uEltypeNoUnits,uBottomEltypeNoUnits,tTypeNoUnits,uprev,uprev2,f,t,dt,reltol_internal,p,calck,Val{isinplace(prob)})
-
-  id = OrdinaryDiffEq.InterpolationData(f,timeseries,ts,ks,true,cache)
-  beta2 = OrdinaryDiffEq.beta2_default(alg)
-  beta1 = OrdinaryDiffEq.beta1_default(alg,beta2)
+#   OrdinaryDiffEq.handle_dt!(integrator)
+  
+#   integrator
 end
 
 @with_kw mutable struct KBIntegrator

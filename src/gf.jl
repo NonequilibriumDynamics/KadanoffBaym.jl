@@ -134,7 +134,7 @@ function Base.show(io::IO, x::LesserOrGreater)
   end
 end
 
-function Base.resize!(A::LesserOrGreater, t::NTuple{2,Int})
+function resize(A::LesserOrGreater, t::NTuple{2,Int})
   if eltype(A) <: AbstractArray
     newdata = fill(eltype(A)(undef,size(first(A))...),t...)
   else
