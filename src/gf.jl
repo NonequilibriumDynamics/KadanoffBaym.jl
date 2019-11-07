@@ -141,13 +141,13 @@ function resize(A::LesserOrGreater, t::NTuple{2,Int})
     newdata = zeros(eltype(A),front2(size(A))...,t...)
   end
 
-  prev_last2 = last2(size(A))
+  T, T′ = min.(last2(size(A)), t)
 
-  for t in 1:1:prev_last2[1]
-    for t′ in 1:1:prev_last2[2]
+  for t in 1:1:T
+    for t′ in 1:1:T′
       newdata[..,t,t′] = A.data[..,t,t′]
     end
   end
-  
+
   return typeof(A)(newdata)
 end
