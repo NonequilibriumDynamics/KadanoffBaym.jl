@@ -72,9 +72,9 @@ Base.setindex!(A::LesserOrGreater, v, I...) = _setindex!(A, v, last2(I), front2(
 
 _setindex!(A::LesserGF, v, L::NTuple{2, Int64}, F...) = begin @assert <=(L...) "t>t′"; __setindex!(A, v, L, F...) end
 _setindex!(A::GreaterGF, v, L::NTuple{2, Int64}, F...) = begin @assert >=(L...) "t<t′"; __setindex!(A, v, L, F...) end
-_setindex!(A::LesserOrGreater, v, L::Tuple{T, U}, F...) where {T, U} = __setindex!(A, v, L, F...)
+_setindex!(A::LesserOrGreater, v, L::NTuple{2, Union{Int64, Colon}}, F...) = __setindex!(A, v, L, F...)
 
-function __setindex!(A::LesserOrGreater, v, L::Tuple{T,U}, F...) where {T,U}
+@inline function __setindex!(A::LesserOrGreater, v, L::Tuple{T,U}, F...) where {T,U}
   if ==(L...)
     setindex!(A.data, v, F..., L...)
   else 
@@ -85,6 +85,20 @@ end
 
 Base.iterate(A::LesserOrGreater, state=1) = iterate(A.data, state)
 Base.copy(A::LesserOrGreater) = typeof(A)(copy(A.data))
+
+function symmetrize!(A::LesserOrGreater)
+  T, T′ = last2(size(A))
+  if typeof(A) <: LesserGF
+    for t′ in 1:1:T′, t in 1:1:t′
+      A[..,t,t′] = A[..,t,t′]
+    end
+  else
+    for t in 1:1:T, t′ in 1:1:t
+      A[..,t,t′] = A[..,t,t′]
+    end
+  end
+  A
+end
 
 # struct RetardedGF <: GreenFunction end
 # struct AdvancedGF <: GreenFunction end
@@ -141,13 +155,13 @@ function resize(A::LesserOrGreater, t::NTuple{2,Int})
     newdata = zeros(eltype(A),front2(size(A))...,t...)
   end
 
-  prev_last2 = last2(size(A))
+  T, T′ = min.(last2(size(A)), t)
 
-  for t in 1:1:prev_last2[1]
-    for t′ in 1:1:prev_last2[2]
+  for t in 1:1:T
+    for t′ in 1:1:T′
       newdata[..,t,t′] = A.data[..,t,t′]
     end
   end
-  
+
   return typeof(A)(newdata)
 end
