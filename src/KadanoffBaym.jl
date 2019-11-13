@@ -3,19 +3,21 @@
 module KadanoffBaym
 
 using LinearAlgebra
-using Parameters
-using MuladdMacro
-using RecursiveArrayTools
 using EllipsisNotation
-
-# using Reexport
-# @reexport using OrdinaryDiffEq
+using RecursiveArrayTools
+# using MuladdMacro
+using Parameters
+using DataStructures
 using OrdinaryDiffEq
+
+using Reexport
+@reexport using DiffEqBase
+import DiffEqBase.__init
 
 include("utils.jl")
 include("gf.jl")
 
-include("core.jl")
 include("common.jl")
+include("core.jl")
 
 end

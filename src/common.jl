@@ -1,7 +1,7 @@
-struct KB{algType} <: DiffEqBase.AbstractODEAlgorithm end
+struct KB{algType} <: OrdinaryDiffEq.OrdinaryDiffEqAlgorithm end
 export KB
 
-alg_type(::KB{algType}) where {algType} = algType()
+alg_type(::KB{algType}) where {algType} = algType
 # OrdinaryDiffEq.isadaptive(::KB{algType}) where {algType} = OrdinaryDiffEq.isadaptive(algType())
 # OrdinaryDiffEq.alg_order(::KB{algType}) where {algType} = OrdinaryDiffEq.alg_order(algType())
 # OrdinaryDiffEq.isfsal(::KB) = true
@@ -18,9 +18,9 @@ end
 """
 Recycle OrdinaryDiffEq's Adams-Bashfourth-Moulton caches
 """
-function OrdinaryDiffEq.alg_cache(::KB{algType}, args...) where algType
+function OrdinaryDiffEq.alg_cache(::KB{algType}, N, args...) where algType
   cache = OrdinaryDiffEq.alg_cache(algType(), args...)
-  return KBCaches{typeof(cache)}([recursivecopy(cache)], cache) # repeat cache
+  return KBCaches{typeof(cache)}([recursivecopy(cache) for i=1:N], cache) # repeat cache
 end
 
 """
@@ -114,8 +114,6 @@ function DiffEqBase.__init(prob::ODEProblem,
   end
 
   if !adaptive
-    cache = alg_cache(alg,0,recursivecopy(u),0,0,0,0,0,0,0,0,0,0,0,Val(false))
-
     steps = Int(ceil(Int,(tspan[2]-tspan[1])/dt) + 1)
 
     ts = Matrix{Tuple{tType,tType}}(undef,steps,steps)
@@ -123,13 +121,14 @@ function DiffEqBase.__init(prob::ODEProblem,
 
     timeseries = recursivecopy(u)
     timeseries = uType(map(g->resize(g, (11,11)), timeseries.x))
+    caches = alg_cache(alg,steps,0,recursivecopy(u),0,0,0,0,0,0,0,0,0,0,0,Val(false))
   else
     @assert false "Not yet supported"
   end
 
   QT = tTypeNoUnits <: Integer ? typeof(qmin) : tTypeNoUnits
 
-  id = OrdinaryDiffEq.InterpolationData(f,timeseries,ts,[],true,cache)
+  id = OrdinaryDiffEq.InterpolationData(f,timeseries,ts,[],true,caches)
   beta2=OrdinaryDiffEq.beta2_default(algType())
   beta1=OrdinaryDiffEq.beta1_default(algType(),beta2)
 
@@ -165,45 +164,36 @@ function DiffEqBase.__init(prob::ODEProblem,
                        true,false,false,false)
 
   destats = DiffEqBase.DEStats(0)
+
+  sol = DiffEqBase.build_solution(prob,alg,ts,timeseries,
+                    dense=true,interp=id,
+                    calculate_error = false, destats=destats)
+
+  integrator = KBIntegrator{alg_type(alg), typeof(sol), uType, tType, typeof(p), typeof(f), typeof(caches), typeof(opts)}(sol, u, f, p, dt, caches, opts)
+
+  # # initialize_callbacks!(integrator, initialize_save)
+  initialize!(integrator,integrator.caches)
+  OrdinaryDiffEq.handle_dt!(integrator)
+  integrator
 end
 
-@with_kw mutable struct KBIntegrator
-  t_idxs
-  dt_idxs
-  dt
-  u
-  f
-  fsalfirst
-  fsallast
-  k
-  p = nothing
-  u_modified::Bool = false
-end
+mutable struct KBIntegrator{algType, solType, uType, tType, pType, fctType, cacheType, optsType}
+  sol::solType
+  u::uType
+  f::fctType
+  p::pType
+  t_idxs::Tuple{Int64,Int64}
+  dt_idxs::Tuple{Int64,Int64}
+  dt::tType
+  caches::cacheType
+  opts::optsType
 
-function DiffEqBase.solve!(integrator::KBIntegrator)
-  @inbounds while !isempty(integrator.opts.tstops)
-    while integrator.tdir * integrator.t < top(integrator.opts.tstops)
-    #   loopheader!(integrator)
-    #   if check_error!(integrator) != :Success
-    #     return integrator.sol
-    #   end
-      perform_step!(integrator,integrator.cache)
-    #   loopfooter!(integrator)
-      if isempty(integrator.opts.tstops)
-        break
-      end
-    end
-    handle_tstop!(integrator) # NOTE: Not tested
+  # iter::Int
+  # alg::algType
+  # accept_step::Bool
+  # force_stepfail::Bool
+
+  function KBIntegrator{algType, solType, uType, tType, pType, fctType, cacheType, optsType}(sol, u, f, p, dt, caches, opts) where {algType, solType, uType, tType, pType, fctType, cacheType, optsType}
+    new{algType, solType, uType, tType, pType, fctType, cacheType, optsType}(sol, u, f, p, (0,0), (0,1), dt, caches, opts)
   end
-  # postamble!(integrator)
-
-  # f = integrator.sol.prob.f
-
-  # if DiffEqBase.has_analytic(f)
-  #   DiffEqBase.calculate_solution_errors!(integrator.sol;timeseries_errors=integrator.opts.timeseries_errors,dense_errors=integrator.opts.dense_errors)
-  # end
-  # if integrator.sol.retcode != :Default
-  #   return integrator.sol
-  # end
-  integrator.sol = DiffEqBase.solution_new_retcode(integrator.sol,:Success) # NOTE: Not tested
 end
