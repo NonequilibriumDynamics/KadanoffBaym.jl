@@ -13,19 +13,23 @@ function perform_step!(integrator::KBIntegrator,caches::KBCaches,repeat_step=fal
 
   # @assert !integrator.u_modified
   @assert dt_idxs == (0, 1)
+  T′, T′ = t_idxs
 
-  _, t′ = t_idxs
-
-  for t in 1:t′
-    integrator.t_idxs = (t, t′)
+  for t in 1:T′
+    integrator.t_idxs = (t, T′)
     cache = caches.line[t]
     abm43!(integrator, cache)
   end
 
   # Step the diagonal!
-  integrator.t_idxs = t, t′ = (t′,t′) .+ reverse(dt_idxs)
-  cache = caches.line[t]
+  integrator.t_idxs = (T′,T′) .+ reverse(dt_idxs)
+  cache = caches.line[T′+1]
   abm43!(integrator, cache)
+  foreach(integrator.u.x) do uᵢ
+    uᵢ[(T′+1, T′+1)...] = -adjoint(uᵢ[(T′+1, T′+1)...]) # reflect back!
+  end
+
+  integrator.t_idxs = (T′, T′)
 end
 
 """
@@ -45,20 +49,16 @@ function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,repeat_step=
   k1 = f(u, p, t_idxs...)
   # integrator.destats.nf += 1
 
-  u′ = ArrayPartition(map(uᵢ -> uᵢ[t_idxs...], u.x)...) # caches u
-
   if cache.step <= 3 # Euler-Heun
     foreach(zip(u.x, k1.x)) do (uᵢ, k1ᵢ)
-      print(typeof(dt * k1ᵢ))
-      uᵢ[t_idxs...] += dt * k1ᵢ # Predictor
+      uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + dt * k1ᵢ # Predictor
     end
 
     k = f(u, p, (t_idxs .+ dt_idxs)...)
     # integrator.destats.nf += 1
 
-    foreach(zip(u.x,u′.x,k.x,k1.x)) do (uᵢ,u′ᵢ,kᵢ,k1ᵢ)
-      uᵢ[t_idxs...] = u′ᵢ # reset to cached value
-      uᵢ[(t_idxs .+ dt_idxs)...] = u′ᵢ + (dt/2) * (kᵢ + k1ᵢ) # Corrector
+    foreach(zip(u.x,k.x,k1.x)) do (uᵢ,kᵢ,k1ᵢ)
+      uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/2) * (kᵢ + k1ᵢ) # Corrector
     end 
 
     # Update ABM's cache
@@ -78,9 +78,8 @@ function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,repeat_step=
     k = f(u, p, (t_idxs .+ dt_idxs)...)
     # integrator.destats.nf += 1
 
-    foreach(zip(u.x,u′.x,k.x,k1.x,k2.x,k3.x)) do (uᵢ,u′ᵢ,kᵢ,k1ᵢ,k2ᵢ,k3ᵢ)
-      uᵢ[t_idxs...] = u′ᵢ # reset to cached value
-      uᵢ[(t_idxs .+ dt_idxs)...] = u′ᵢ + (dt/24) * (9*kᵢ + 19*k1ᵢ - 5*k2ᵢ + k3ᵢ) # Corrector
+    foreach(zip(u.x,k.x,k1.x,k2.x,k3.x)) do (uᵢ,kᵢ,k1ᵢ,k2ᵢ,k3ᵢ)
+      uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/24) * (9*kᵢ + 19*k1ᵢ - 5*k2ᵢ + k3ᵢ) # Corrector
     end
 
     # Update ABM's cache

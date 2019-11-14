@@ -60,11 +60,12 @@ function DiffEqBase.__init(prob::ODEProblem,
   f = prob.f
   p = prob.p
 
-  u = recursivecopy(prob.u0) # it's also ks
+  u0Type = typeof(prob.u0)
+  @assert u0Type <: ArrayPartition "Functions need to be inside an ArrayPartition"
+  @assert eltype(prob.u0.x) <: GreenFunction "Can only timestep Green functions!"
 
+  u = ArrayPartition(map(first, prob.u0.x)...) # it's also ks
   uType = typeof(u)
-  @assert uType <: ArrayPartition "Functions need to be inside an ArrayPartition"
-  @assert eltype(u.x) <: GreenFunction "Can only timestep Green functions!"
 
   uBottomEltype = recursive_bottom_eltype(u)
   uBottomEltypeNoUnits = recursive_unitless_bottom_eltype(u)
@@ -117,9 +118,8 @@ function DiffEqBase.__init(prob::ODEProblem,
 
     ts = map(x -> (x .* (dt, dt) .+ t), Iterators.product(1:steps, 1:steps))
 
-    timeseries = recursivecopy(u)
-    timeseries = uType(map(g->resize(g, (steps,steps)), timeseries.x))
-    u = recursivecopy(timeseries)
+    timeseries = recursivecopy(prob.u0)
+    timeseries = u0Type(map(g->resize(g, (steps,steps)), timeseries.x))
     caches = alg_cache(alg,steps,0,recursivecopy(u),0,0,0,0,0,0,0,0,0,0,0,Val(false))
   else
     @assert false "Not yet supported"
@@ -170,13 +170,13 @@ function DiffEqBase.__init(prob::ODEProblem,
 
   integrator = KBIntegrator{alg_type(alg),
                             typeof(sol),
-                            uType,
+                            typeof(timeseries),
                             tType,
                             typeof(p), 
                             typeof(f),
                             typeof(caches),
                             typeof(opts)}(
-                              sol, u, f, p, dt, caches, opts, t, tdir)
+                              sol, timeseries, f, p, dt, caches, opts, t, tdir)
 
   # # initialize_callbacks!(integrator, initialize_save)
   initialize!(integrator,integrator.caches)
@@ -209,7 +209,8 @@ end
 
 function DiffEqBase.solve!(integrator::KBIntegrator)
   # @inbounds while !isempty(integrator.opts.tstops)
-    while integrator.tdir * integrator.t < top(integrator.opts.tstops)
+    while first(integrator.t_idxs) < length(integrator.caches.line)
+    # while integrator.tdir * integrator.t < top(integrator.opts.tstops)
       loopheader!(integrator)
 #       # if check_error!(integrator) != :Success
 # #     #     return integrator.sol
