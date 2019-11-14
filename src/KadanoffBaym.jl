@@ -12,7 +12,7 @@ using OrdinaryDiffEq
 
 using Reexport
 @reexport using DiffEqBase
-import DiffEqBase.__init
+import DiffEqBase.__init, DiffEqBase.solve!
 
 include("utils.jl")
 include("gf.jl")

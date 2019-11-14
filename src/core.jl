@@ -11,20 +11,20 @@ Performs a Kadanoff-Baym time step
 function perform_step!(integrator::KBIntegrator,caches::KBCaches,repeat_step=false)
   @unpack t_idxs, dt_idxs = integrator
 
-  @assert !integrator.u_modified
+  # @assert !integrator.u_modified
   @assert dt_idxs == (0, 1)
 
   _, t′ = t_idxs
 
   for t in 1:t′
     integrator.t_idxs = (t, t′)
-    cache = caches.caches[t′]
+    cache = caches.line[t]
     abm43!(integrator, cache)
   end
 
   # Step the diagonal!
   integrator.t_idxs = t, t′ = (t′,t′) .+ reverse(dt_idxs)
-  cache = caches.caches[t′]
+  cache = caches.line[t]
   abm43!(integrator, cache)
 end
 
@@ -40,20 +40,21 @@ y_{n+1} = y_{n} + Δt/2 [f(t+Δt, ̃y_{n+1}) + f(t, y_{n})]
 function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,repeat_step=false)
   @unpack t_idxs, dt_idxs, dt, u, f, p = integrator
   @unpack k2,k3,k4 = cache
-  @assert !integrator.u_modified
+  # @assert !integrator.u_modified
 
   k1 = f(u, p, t_idxs...)
-  integrator.destats.nf += 1
+  # integrator.destats.nf += 1
 
-  u′ = ArrayPartition(map(uᵢ -> uᵢ[t_idxs...], u)...) # caches u
+  u′ = ArrayPartition(map(uᵢ -> uᵢ[t_idxs...], u.x)...) # caches u
 
   if cache.step <= 3 # Euler-Heun
     foreach(zip(u.x, k1.x)) do (uᵢ, k1ᵢ)
+      print(typeof(dt * k1ᵢ))
       uᵢ[t_idxs...] += dt * k1ᵢ # Predictor
     end
 
     k = f(u, p, (t_idxs .+ dt_idxs)...)
-    integrator.destats.nf += 1
+    # integrator.destats.nf += 1
 
     foreach(zip(u.x,u′.x,k.x,k1.x)) do (uᵢ,u′ᵢ,kᵢ,k1ᵢ)
       uᵢ[t_idxs...] = u′ᵢ # reset to cached value
@@ -75,7 +76,7 @@ function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,repeat_step=
     end
     
     k = f(u, p, (t_idxs .+ dt_idxs)...)
-    integrator.destats.nf += 1
+    # integrator.destats.nf += 1
 
     foreach(zip(u.x,u′.x,k.x,k1.x,k2.x,k3.x)) do (uᵢ,u′ᵢ,kᵢ,k1ᵢ,k2ᵢ,k3ᵢ)
       uᵢ[t_idxs...] = u′ᵢ # reset to cached value

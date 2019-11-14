@@ -52,7 +52,6 @@ function DiffEqBase.__init(prob::ODEProblem,
   tdir = sign(tspan[end]-tspan[1])
 
   t = tspan[1]
-  t′ = tspan[1]
 
   if (!adaptive && dt == tType(0))
     error("Fixed timestep methods require a choice of dt")
@@ -116,11 +115,11 @@ function DiffEqBase.__init(prob::ODEProblem,
   if !adaptive
     steps = Int(ceil(Int,(tspan[2]-tspan[1])/dt) + 1)
 
-    ts = Matrix{Tuple{tType,tType}}(undef,steps,steps)
-    ts[1,1] = (t, t′)
+    ts = map(x -> (x .* (dt, dt) .+ t), Iterators.product(1:steps, 1:steps))
 
     timeseries = recursivecopy(u)
-    timeseries = uType(map(g->resize(g, (11,11)), timeseries.x))
+    timeseries = uType(map(g->resize(g, (steps,steps)), timeseries.x))
+    u = recursivecopy(timeseries)
     caches = alg_cache(alg,steps,0,recursivecopy(u),0,0,0,0,0,0,0,0,0,0,0,Val(false))
   else
     @assert false "Not yet supported"
@@ -169,7 +168,15 @@ function DiffEqBase.__init(prob::ODEProblem,
                     dense=true,interp=id,
                     calculate_error = false, destats=destats)
 
-  integrator = KBIntegrator{alg_type(alg), typeof(sol), uType, tType, typeof(p), typeof(f), typeof(caches), typeof(opts)}(sol, u, f, p, dt, caches, opts)
+  integrator = KBIntegrator{alg_type(alg),
+                            typeof(sol),
+                            uType,
+                            tType,
+                            typeof(p), 
+                            typeof(f),
+                            typeof(caches),
+                            typeof(opts)}(
+                              sol, u, f, p, dt, caches, opts, t, tdir)
 
   # # initialize_callbacks!(integrator, initialize_save)
   initialize!(integrator,integrator.caches)
@@ -188,12 +195,132 @@ mutable struct KBIntegrator{algType, solType, uType, tType, pType, fctType, cach
   caches::cacheType
   opts::optsType
 
+  t::tType
+  tdir::tType
   # iter::Int
   # alg::algType
   # accept_step::Bool
   # force_stepfail::Bool
 
-  function KBIntegrator{algType, solType, uType, tType, pType, fctType, cacheType, optsType}(sol, u, f, p, dt, caches, opts) where {algType, solType, uType, tType, pType, fctType, cacheType, optsType}
-    new{algType, solType, uType, tType, pType, fctType, cacheType, optsType}(sol, u, f, p, (0,0), (0,1), dt, caches, opts)
+  function KBIntegrator{algType, solType, uType, tType, pType, fctType, cacheType, optsType}(sol, u, f, p, dt, caches, opts, t, tdir) where {algType, solType, uType, tType, pType, fctType, cacheType, optsType}
+    new{algType, solType, uType, tType, pType, fctType, cacheType, optsType}(sol, u, f, p, (1,1), (0,1), dt, caches, opts, t, tdir)
   end
+end
+
+function DiffEqBase.solve!(integrator::KBIntegrator)
+  # @inbounds while !isempty(integrator.opts.tstops)
+    while integrator.tdir * integrator.t < top(integrator.opts.tstops)
+      loopheader!(integrator)
+#       # if check_error!(integrator) != :Success
+# #     #     return integrator.sol
+# #     #   end
+      perform_step!(integrator,integrator.caches)
+      loopfooter!(integrator)
+#       if isempty(integrator.opts.tstops)
+#         break
+#       end
+    end
+# #     # handle_tstop!(integrator) # NOTE: passed
+  # end
+#   # postamble!(integrator) # Note: passed
+
+#   # f = integrator.sol.prob.f
+
+#   # if DiffEqBase.has_analytic(f)
+#   #   DiffEqBase.calculate_solution_errors!(integrator.sol;timeseries_errors=integrator.opts.timeseries_errors,dense_errors=integrator.opts.dense_errors)
+#   # end
+#   # if integrator.sol.retcode != :Default
+#   #   return integrator.sol
+#   # end
+#   # integrator.sol = DiffEqBase.solution_new_retcode(integrator.sol,:Success) # NOTE: Not tested
+end
+
+function loopheader!(integrator::KBIntegrator)
+  # Apply right after iterators / callbacks
+
+  # Accept or reject the step
+  # if integrator.iter > 0
+    # if ((integrator.opts.adaptive && integrator.accept_step) || !integrator.opts.adaptive) && !integrator.force_stepfail
+      # integrator.success_iter += 1
+      # apply_step!(integrator)
+    # elseif integrator.opts.adaptive && !integrator.accept_step
+    #   if integrator.isout
+    #     integrator.dt = integrator.dt*integrator.opts.qmin
+    #   elseif !integrator.force_stepfail
+    #     step_reject_controller!(integrator,integrator.alg)
+    #   end
+    # end
+  # end
+
+  # integrator.iter += 1
+  # fix_dt_at_bounds!(integrator)
+  # modify_dt_for_tstops!(integrator)
+  # integrator.force_stepfail = false
+  nothing
+end
+
+function loopfooter!(integrator::KBIntegrator)
+
+  # Carry-over from callback
+  # This is set to true if u_modified requires callback FSAL reset
+  # But not set to false when reset so algorithms can check if reset occurred
+
+  # integrator.reeval_fsal = false
+  # integrator.u_modified = false
+  ttmp = integrator.t + integrator.dt
+  # if integrator.force_stepfail
+  #     if integrator.opts.adaptive
+  #       integrator.dt = integrator.dt/integrator.opts.failfactor
+  #     elseif integrator.last_stepfail
+  #       return
+  #     end
+  #     integrator.last_stepfail = true
+  #     integrator.accept_step = false
+  # elseif integrator.opts.adaptive
+  #   q = stepsize_controller!(integrator,integrator.alg)
+  #   integrator.isout = integrator.opts.isoutofdomain(integrator.u,integrator.p,ttmp)
+  #   integrator.accept_step = (!integrator.isout && integrator.EEst <= 1.0) || (integrator.opts.force_dtmin && abs(integrator.dt) <= abs(integrator.opts.dtmin))
+  #   if integrator.accept_step # Accept
+  #     integrator.destats.naccept += 1
+  #     integrator.last_stepfail = false
+  #     dtnew = step_accept_controller!(integrator,integrator.alg,q)
+  #     integrator.tprev = integrator.t
+  #     # integrator.EEst has unitless type of integrator.t
+  #     if typeof(integrator.EEst)<: AbstractFloat && !isempty(integrator.opts.tstops)
+  #       tstop = integrator.tdir * top(integrator.opts.tstops)
+  #       abs(ttmp - tstop) < 10eps(max(integrator.t,tstop)/oneunit(integrator.t))*oneunit(integrator.t) ?
+  #                                 (integrator.t = tstop) : (integrator.t = ttmp)
+  #     else
+  #       integrator.t = ttmp
+  #     end
+  #     calc_dt_propose!(integrator,dtnew)
+  #     handle_callbacks!(integrator)
+  #   else # Reject
+  #     integrator.destats.nreject += 1
+    # end
+  if !integrator.opts.adaptive #Not adaptive
+  #   integrator.destats.naccept += 1
+  #   integrator.tprev = integrator.t
+  #   # integrator.EEst has unitless type of integrator.t
+  #   if typeof(integrator.EEst)<: AbstractFloat && !isempty(integrator.opts.tstops)
+  #     tstop = integrator.tdir * top(integrator.opts.tstops)
+  #     abs(ttmp - tstop) < 10eps(integrator.t/oneunit(integrator.t))*oneunit(integrator.t) ?
+  #                                 (integrator.t = tstop) : (integrator.t = ttmp)
+    # else
+      integrator.t = ttmp
+      integrator.t_idxs = integrator.t_idxs .+ (1,1)
+  #   end
+  #   integrator.last_stepfail = false
+  #   integrator.accept_step = true
+  #   integrator.dtpropose = integrator.dt
+  #   handle_callbacks!(integrator)
+  end
+  # if integrator.opts.progress && integrator.iter%integrator.opts.progress_steps==0
+  #   @logmsg(-1,
+  #   integrator.opts.progress_name,
+  #   _id = :OrdinaryDiffEq,
+  #   message=integrator.opts.progress_message(integrator.dt,integrator.u,integrator.p,integrator.t),
+  #   progress=integrator.t/integrator.sol.prob.tspan[2])
+  # end
+  nothing
 end
