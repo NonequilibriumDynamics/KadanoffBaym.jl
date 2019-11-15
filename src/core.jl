@@ -36,10 +36,6 @@ end
 Adams-Bashfourth-Moulton 43 predictor corrector method
 y_{n+1} = y_{n} + Δt/24 [9 f(̃y_{n+1}) + 19 f(y_{n}) - 5 f(y_{n-1}) + f(y_{n-2})]
 ̃y_{n+1} = y_{n} + Δt/24 [55 f(y_{n}) - 59 f(y_{n-1}) + 37 f(y_{n-2}) - 9 f(y_{n-3})]
-
-Euler-Heun's method
-y_{n+1} = y_{n} + Δt/2 [f(t+Δt, ̃y_{n+1}) + f(t, y_{n})]
-̃y_{n+1} = y_{n} + Δt f(t, y_{n})
 """
 function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,repeat_step=false)
   @unpack t_idxs, dt_idxs, dt, u, f, p = integrator
@@ -49,30 +45,24 @@ function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,repeat_step=
   k1 = f(u, p, t_idxs...)
   # integrator.destats.nf += 1
 
-  if cache.step <= 3 # Euler-Heun
-    foreach(zip(u.x, k1.x)) do (uᵢ, k1ᵢ)
-      uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + dt * k1ᵢ # Predictor
-    end
-
-    k = f(u, p, (t_idxs .+ dt_idxs)...)
-    # integrator.destats.nf += 1
-
-    foreach(zip(u.x,k.x,k1.x)) do (uᵢ,kᵢ,k1ᵢ)
-      uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/2) * (kᵢ + k1ᵢ) # Corrector
-    end 
+  if cache.step <= 2 # Euler-Heun 
+    eulerHeun!(integrator, k1, cache)
 
     # Update ABM's cache
     if cache.step == 1
-      cache.k4 = k1
-    elseif cache.step == 2
       cache.k3 = k1
     else
       cache.k2 = k1
     end
     cache.step += 1
   else # Adams-Bashfourth-Moulton 4-3
-    foreach(zip(u.x,k1.x,k2.x,k3.x,k4.x)) do (uᵢ,k1ᵢ,k2ᵢ,k3ᵢ,k4ᵢ)
-      uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/24) * (55*k1ᵢ - 59*k2ᵢ + 37*k3ᵢ - 9*k4ᵢ) # Predictor
+    if cache.step <= 3
+      eulerHeun!(integrator, k1, cache)
+      cache.step +=1
+    else
+      foreach(zip(u.x,k1.x,k2.x,k3.x,k4.x)) do (uᵢ,k1ᵢ,k2ᵢ,k3ᵢ,k4ᵢ)
+        uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/24) * (55*k1ᵢ - 59*k2ᵢ + 37*k3ᵢ - 9*k4ᵢ) # Predictor
+      end
     end
     
     k = f(u, p, (t_idxs .+ dt_idxs)...)
@@ -88,3 +78,27 @@ function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,repeat_step=
     cache.k2 = k1
   end
 end
+
+"""
+Euler-Heun's method
+y_{n+1} = y_{n} + Δt/2 [f(t+Δt, ̃y_{n+1}) + f(t, y_{n})]
+̃y_{n+1} = y_{n} + Δt f(t, y_{n})
+"""
+function eulerHeun!(integrator,k1,cache::OrdinaryDiffEq.ABM43ConstantCache,repeat_step=false)
+  @unpack t_idxs, dt_idxs, dt, u, f, p = integrator
+  @unpack k2,k3,k4 = cache
+  # @assert !integrator.u_modified
+
+  foreach(zip(u.x, k1.x)) do (uᵢ, k1ᵢ)
+    uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + dt * k1ᵢ # Predictor
+  end
+
+  k = f(u, p, (t_idxs .+ dt_idxs)...)
+  # integrator.destats.nf += 1
+
+  foreach(zip(u.x,k.x,k1.x)) do (uᵢ,kᵢ,k1ᵢ)
+    uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/2) * (kᵢ + k1ᵢ) # Corrector
+  end
+end
+
+
