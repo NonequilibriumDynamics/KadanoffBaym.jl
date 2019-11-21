@@ -67,19 +67,22 @@ Base.length(A::LesserOrGreater) = length(A.data)
 Base.firstindex(A::LesserOrGreater) = firstindex(A.data)
 Base.lastindex(A::LesserOrGreater) = lastindex(A.data)
 
-Base.getindex(A::LesserOrGreater, I...) = Base.getindex(A.data, I...) #get(A.data, I, zero(eltype(A)))
-Base.setindex!(A::LesserOrGreater, v, I...) = _setindex!(A, v, last2(I), front2(I)...)
+Base.getindex(A::LesserOrGreater, F::Vararg{Union{Int64, Colon}, 2}) = Base.getindex(A.data, F..., ..)
+Base.getindex(A::LesserOrGreater, I...) = Base.getindex(A.data, I...)
 
-_setindex!(A::LesserGF, v, L::NTuple{2, Int64}, F...) = begin @assert <=(L...) "t>t′"; __setindex!(A, v, L, F...) end
-_setindex!(A::GreaterGF, v, L::NTuple{2, Int64}, F...) = begin @assert >=(L...) "t<t′"; __setindex!(A, v, L, F...) end
-_setindex!(A::LesserOrGreater, v, L::NTuple{2, Union{Int64, Colon}}, F...) = __setindex!(A, v, L, F...)
+Base.setindex!(A::LesserOrGreater, v, F::Vararg{Union{Int64, Colon}, 2}) = __setindex!(A, v, F, (..,))
+Base.setindex!(A::LesserOrGreater, v, I...) = _setindex!(A, v, front2_last(I)...)
 
-@inline function __setindex!(A::LesserOrGreater, v, L::Tuple{T,U}, F...) where {T,U}
-  if ==(L...)
+# _setindex!(A::LesserGF, v, L::NTuple{2, Int64}, F...) = begin @assert <=(L...) "t>t′"; __setindex!(A, v, L, F...) end
+# _setindex!(A::GreaterGF, v, L::NTuple{2, Int64}, F...) = begin @assert >=(L...) "t<t′"; __setindex!(A, v, L, F...) end
+_setindex!(A::LesserOrGreater, v, F::NTuple{2, Union{Int64, Colon}}, L::Tuple) = __setindex!(A, v, F, L)
+
+@inline function __setindex!(A::LesserOrGreater, v, F::Tuple{T,U}, L::Tuple) where {T,U}
+  if ==(F...)
     setindex!(A.data, v, F..., L...)
   else 
     setindex!(A.data, v, F..., L...)
-    setindex!(A.data, -adjoint(v), F..., reverse(L)...)
+    setindex!(A.data, -adjoint(v), reverse(F)..., L...)
   end
 end
 
@@ -87,14 +90,14 @@ Base.iterate(A::LesserOrGreater, state=1) = iterate(A.data, state)
 Base.copy(A::LesserOrGreater) = typeof(A)(copy(A.data))
 
 function symmetrize!(A::LesserOrGreater)
-  T, T′ = last2(size(A))
+  T, T′ = first2(size(A))
   if typeof(A) <: LesserGF
     for t′ in 1:1:T′, t in 1:1:t′
-      A[..,t,t′] = A[..,t,t′]
+      A[t,t′] = A[t,t′]
     end
   else
     for t in 1:1:T, t′ in 1:1:t
-      A[..,t,t′] = A[..,t,t′]
+      A[t,t′] = A[t,t′]
     end
   end
   A
@@ -150,18 +153,18 @@ end
 
 function resize(A::LesserOrGreater, t::NTuple{2,Int})
   if eltype(A) <: AbstractArray
-    newdata = fill(eltype(A)(undef,size(first(A))...),t...)
+    newdata = fill(eltype(A)(undef,t...,size(first(A))...))
   else
-    newdata = zeros(eltype(A),front2(size(A))...,t...)
+    newdata = typeof(A)(zeros(eltype(A),t...,tail2(size(A))...))
   end
 
-  T, T′ = min.(last2(size(A)), t)
+  T, T′ = min.(first2(size(A)), t)
 
   for t in 1:1:T
     for t′ in 1:1:T′
-      newdata[..,t,t′] = A.data[..,t,t′]
+      newdata[t,t′] = A[t,t′]
     end
   end
 
-  return typeof(A)(newdata)
+  return newdata
 end

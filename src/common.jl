@@ -60,11 +60,10 @@ function DiffEqBase.__init(prob::ODEProblem,
   f = prob.f
   p = prob.p
 
-  u0Type = typeof(prob.u0)
-  @assert u0Type <: ArrayPartition "Functions need to be inside an ArrayPartition"
+  @assert typeof(prob.u0) <: ArrayPartition "Functions need to be inside an ArrayPartition"
   @assert eltype(prob.u0.x) <: GreenFunction "Can only timestep Green functions!"
 
-  u = ArrayPartition(map(first, prob.u0.x)...) # it's also ks
+  u = ArrayPartition(map(x->x[1,1], prob.u0.x)...) # it's also ks
   uType = typeof(u)
 
   uBottomEltype = recursive_bottom_eltype(u)
@@ -119,7 +118,7 @@ function DiffEqBase.__init(prob::ODEProblem,
     ts = map(x -> (x .* (dt, dt) .+ t), Iterators.product(1:steps, 1:steps))
 
     timeseries = recursivecopy(prob.u0)
-    timeseries = u0Type(map(g->resize(g, (steps,steps)), timeseries.x))
+    timeseries = ArrayPartition(map(g->resize(g, (steps,steps)), timeseries.x)...)
     caches = alg_cache(alg,steps,0,recursivecopy(u),0,0,0,0,0,0,0,0,0,0,0,Val(false))
   else
     @assert false "Not yet supported"
