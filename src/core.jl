@@ -12,29 +12,29 @@ function perform_step!(integrator::KBIntegrator,caches::KBCaches,repeat_step=fal
   @unpack t_idxs, dt_idxs = integrator
 
   # @assert !integrator.u_modified
-  @assert dt_idxs == (0, 1)
-  T′, T′ = t_idxs
+  @assert dt_idxs == (1, 0)
+  T, T = t_idxs
 
-  for t in 1:T′
-    integrator.t_idxs = (t, T′)
+  for t in 1:T
+    integrator.t_idxs = (T, t)
     cache = caches.line[t]
     abm43!(integrator, cache)
   end
 
   # Step the diagonal
   if integrator.f_diag === nothing # through reflections
-    integrator.t_idxs = (T′,T′) .+ reverse(dt_idxs)
-    cache = caches.line[T′+1]
+    integrator.t_idxs = (T,T) .+ reverse(dt_idxs)
+    cache = caches.line[T+1]
     abm43!(integrator, cache)
     foreach(integrator.u.x) do uᵢ
-      uᵢ[(T′+1, T′+1)...] = -adjoint(uᵢ[(T′+1, T′+1)...]) # reflect back!
+      uᵢ[(T+1, T+1)...] = -adjoint(uᵢ[(T+1, T+1)...]) # reflect back!
     end
-    integrator.t_idxs = (T′, T′)
+    integrator.t_idxs = (T, T)
   else # through the diagonal
     integrator.dt_idxs = (1, 1)
     cache = caches.diagonal
     abm43!(integrator, cache)
-    integrator.dt_idxs = (0, 1)
+    integrator.dt_idxs = (1, 0)
   end
 end
 

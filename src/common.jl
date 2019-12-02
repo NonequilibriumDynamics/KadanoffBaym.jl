@@ -27,9 +27,9 @@ end
 Code much like OrdinaryDiffEq.jl, which is licensed under the MIT "Expat" License
 """
 function DiffEqBase.__init(prob::ODEProblem,
-                           alg::KB{algType},
-                           dt=zero(eltype(prob.tspan));
+                           alg::KB{algType};
                            f_diag=nothing,
+                           dt=zero(eltype(prob.tspan)),
                            abstol=nothing,
                            reltol=nothing,
                            adaptive=OrdinaryDiffEq.isadaptive(algType()),
@@ -203,7 +203,7 @@ mutable struct KBIntegrator{algType, solType, uType, tType, pType, cacheType, op
   # force_stepfail::Bool
 
   function KBIntegrator{algType, solType, uType, tType, pType, cacheType, optsType}(sol, u, f, f_diag, p, dt, caches, opts, t, tdir) where {algType, solType, uType, tType, pType, fctType, cacheType, optsType}
-    new{algType, solType, uType, tType, pType, cacheType, optsType}(sol, u, f, f_diag, p, (1,1), (0,1), dt, caches, opts, t, tdir)
+    new{algType, solType, uType, tType, pType, cacheType, optsType}(sol, u, f, f_diag, p, (1,1), (1,0), dt, caches, opts, t, tdir)
   end
 end
 
