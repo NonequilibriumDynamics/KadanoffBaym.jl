@@ -28,7 +28,8 @@ Code much like OrdinaryDiffEq.jl, which is licensed under the MIT "Expat" Licens
 """
 function DiffEqBase.__init(prob::ODEProblem,
                            alg::KB{algType},
-                           dt=zero(eltype(prob.tspan)),
+                           dt=zero(eltype(prob.tspan));
+                           f_diag=nothing,
                            abstol=nothing,
                            reltol=nothing,
                            adaptive=OrdinaryDiffEq.isadaptive(algType()),
@@ -172,10 +173,9 @@ function DiffEqBase.__init(prob::ODEProblem,
                             typeof(timeseries),
                             tType,
                             typeof(p), 
-                            typeof(f),
                             typeof(caches),
                             typeof(opts)}(
-                              sol, timeseries, f, p, dt, caches, opts, t, tdir)
+                              sol, timeseries, f, f_diag, p, dt, caches, opts, t, tdir)
 
   # # initialize_callbacks!(integrator, initialize_save)
   initialize!(integrator,integrator.caches)
@@ -183,10 +183,11 @@ function DiffEqBase.__init(prob::ODEProblem,
   integrator
 end
 
-mutable struct KBIntegrator{algType, solType, uType, tType, pType, fctType, cacheType, optsType}
+mutable struct KBIntegrator{algType, solType, uType, tType, pType, cacheType, optsType}
   sol::solType
   u::uType
-  f::fctType
+  f::Function
+  f_diag::Union{Nothing,Function}
   p::pType
   t_idxs::Tuple{Int64,Int64}
   dt_idxs::Tuple{Int64,Int64}
@@ -201,8 +202,8 @@ mutable struct KBIntegrator{algType, solType, uType, tType, pType, fctType, cach
   # accept_step::Bool
   # force_stepfail::Bool
 
-  function KBIntegrator{algType, solType, uType, tType, pType, fctType, cacheType, optsType}(sol, u, f, p, dt, caches, opts, t, tdir) where {algType, solType, uType, tType, pType, fctType, cacheType, optsType}
-    new{algType, solType, uType, tType, pType, fctType, cacheType, optsType}(sol, u, f, p, (1,1), (0,1), dt, caches, opts, t, tdir)
+  function KBIntegrator{algType, solType, uType, tType, pType, cacheType, optsType}(sol, u, f, f_diag, p, dt, caches, opts, t, tdir) where {algType, solType, uType, tType, pType, fctType, cacheType, optsType}
+    new{algType, solType, uType, tType, pType, cacheType, optsType}(sol, u, f, f_diag, p, (1,1), (0,1), dt, caches, opts, t, tdir)
   end
 end
 

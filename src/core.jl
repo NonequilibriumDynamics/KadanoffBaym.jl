@@ -21,15 +21,21 @@ function perform_step!(integrator::KBIntegrator,caches::KBCaches,repeat_step=fal
     abm43!(integrator, cache)
   end
 
-  # Step the diagonal!
-  integrator.t_idxs = (T′,T′) .+ reverse(dt_idxs)
-  cache = caches.line[T′+1]
-  abm43!(integrator, cache)
-  foreach(integrator.u.x) do uᵢ
-    uᵢ[(T′+1, T′+1)...] = -adjoint(uᵢ[(T′+1, T′+1)...]) # reflect back!
+  # Step the diagonal
+  if integrator.f_diag === nothing # through reflections
+    integrator.t_idxs = (T′,T′) .+ reverse(dt_idxs)
+    cache = caches.line[T′+1]
+    abm43!(integrator, cache)
+    foreach(integrator.u.x) do uᵢ
+      uᵢ[(T′+1, T′+1)...] = -adjoint(uᵢ[(T′+1, T′+1)...]) # reflect back!
+    end
+    integrator.t_idxs = (T′, T′)
+  else # through the diagonal
+    integrator.dt_idxs = (1, 1)
+    cache = caches.diagonal
+    abm43!(integrator, cache)
+    integrator.dt_idxs = (0, 1)
   end
-
-  integrator.t_idxs = (T′, T′)
 end
 
 """
