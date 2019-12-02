@@ -27,9 +27,9 @@ end
 Code much like OrdinaryDiffEq.jl, which is licensed under the MIT "Expat" License
 """
 function DiffEqBase.__init(prob::ODEProblem,
-                           alg::KB{algType};
+                           alg::KB{algType},
+                           dt=zero(eltype(prob.tspan));
                            f_diag=nothing,
-                           dt=zero(eltype(prob.tspan)),
                            abstol=nothing,
                            reltol=nothing,
                            adaptive=OrdinaryDiffEq.isadaptive(algType()),
