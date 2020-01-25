@@ -63,12 +63,16 @@ Base.convert(T::Type{<:GreenFunction}, m::AbstractArray) = T(m)
 
 Base.size(A::LesserOrGreater) = size(A.data)
 Base.length(A::LesserOrGreater) = length(A.data)
+Base.size(A::LesserOrGreater{AbstractArray, S}) where S = tuplejoin(size(A.data), size(first(A.data)))
+Base.length(A::LesserOrGreater{AbstractArray, S}) where S = length(A.data) * length(first(A.data))
 
-Base.firstindex(A::LesserOrGreater) = firstindex(A.data)
-Base.lastindex(A::LesserOrGreater) = lastindex(A.data)
+# Base.firstindex(A::LesserOrGreater) = firstindex(A.data)
+# Base.lastindex(A::LesserOrGreater) = lastindex(A.data)
 
 Base.getindex(A::LesserOrGreater, F::Vararg{Union{Int64, Colon}, 2}) = Base.getindex(A.data, F..., ..)
 Base.getindex(A::LesserOrGreater, I...) = Base.getindex(A.data, I...)
+Base.getindex(A::LesserOrGreater{AbstractArray, S}, F::Vararg{Union{Int64, Colon}, 2}) where S = Base.getindex(A.data, F...)
+Base.getindex(A::LesserOrGreater{AbstractArray, S}, I...) where S = Base.getindex(Base.getindex(A.data, front2(I)...), tail2(I)...)
 
 Base.setindex!(A::LesserOrGreater, v, F::Vararg{Union{Int64, Colon}, 2}) = __setindex!(A, v, F, (..,))
 Base.setindex!(A::LesserOrGreater, v, I...) = _setindex!(A, v, front2_last(I)...)
@@ -86,7 +90,16 @@ _setindex!(A::LesserOrGreater, v, F::NTuple{2, Union{Int64, Colon}}, L::Tuple) =
   end
 end
 
-Base.iterate(A::LesserOrGreater, state=1) = iterate(A.data, state)
+@inline function __setindex!(A::LesserOrGreater{AbstractArray, S}, v, F::Tuple{T,U}, L::Tuple) where {S,T,U}
+  if ==(F...)
+    setindex!(A.data[F...], v , L...)
+  else 
+    setindex!(A.data[F...], v , L...)
+    setindex!(A.data[reverse(F)...], -adjoint(v) , L...)
+  end
+end
+
+# Base.iterate(A::LesserOrGreater, state=1) = iterate(A.data, state)
 Base.copy(A::LesserOrGreater) = typeof(A)(copy(A.data))
 
 function symmetrize!(A::LesserOrGreater)

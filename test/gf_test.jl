@@ -82,3 +82,19 @@ end
 
 @show @btime setindexA($data)
 @show @btime setindexG($gf)
+
+
+data = [rand(ComplexF64, N, N) for i in 1:N, j in 1:N]
+lgf = LesserGF(copy(data))
+
+@test lgf[1,2,3,4] == data[1,2][3,4]
+
+temp = 1.0 + 2.0im
+lgf[1,2,3,4] = temp
+@test lgf.data[1,2][3,4] == temp
+@test lgf.data[2,1][3,4] == -conj(temp)
+
+temp = rand(ComplexF64, N, N)
+lgf[1,2] = temp
+@test lgf.data[1,2] == temp
+@test lgf.data[2,1] == -conj(temp)
