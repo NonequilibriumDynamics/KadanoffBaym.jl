@@ -15,27 +15,32 @@ function perform_step!(integrator::KBIntegrator,caches::KBCaches,repeat_step=fal
   @assert dt_idxs == (1, 0)
   T, T = t_idxs
 
+  # Step all previous times
   for t in 1:T
     integrator.t_idxs = (T, t)
-    cache = caches.line[t]
-    abm43!(integrator, cache)
+    abm43!(integrator, caches.line[t], integrator.f)
   end
 
-  # Step the diagonal
-  if integrator.f_diag === nothing # through reflections
-    integrator.t_idxs = (T,T) .+ reverse(dt_idxs)
-    cache = caches.line[T+1]
-    abm43!(integrator, cache)
-    foreach(integrator.u.x) do uᵢ
-      uᵢ[(T+1, T+1)...] = -adjoint(uᵢ[(T+1, T+1)...]) # reflect back!
-    end
+  # Step the diagonal through reflections
+  if integrator.f_diag === nothing
+    integrator.t_idxs = (T, T+1)
+    abm43!(integrator, caches.line[T+1], integrator.f)
     integrator.t_idxs = (T, T)
-  else # through the diagonal
+
+    # Walking through the diagonal requires a backwards reflection
+    foreach(integrator.u.x) do uᵢ
+      uᵢ[(T+1, T+1)...] = -adjoint(uᵢ[(T+1, T+1)...])
+    end
+
+  # Step the diagonal with the diagonal function
+  else
     integrator.dt_idxs = (1, 1)
-    cache = caches.diagonal
-    abm43!(integrator, cache, diagonal=true)
+    abm43!(integrator, caches.diagonal, integrator.f_diag)
     integrator.dt_idxs = (1, 0)
   end
+
+  @assert dt_idxs == (1, 0)
+  @assert integrator.t_idxs == (T, T)
 end
 
 """
@@ -43,9 +48,8 @@ Adams-Bashfourth-Moulton 43 predictor corrector method
 y_{n+1} = y_{n} + Δt/24 [9 f(̃y_{n+1}) + 19 f(y_{n}) - 5 f(y_{n-1}) + f(y_{n-2})]
 ̃y_{n+1} = y_{n} + Δt/24 [55 f(y_{n}) - 59 f(y_{n-1}) + 37 f(y_{n-2}) - 9 f(y_{n-3})]
 """
-function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache;diagonal=false)
+function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,f)
   @unpack t_idxs, dt_idxs, dt, u, p = integrator
-  f = !diagonal ? integrator.f : integrator.f_diag
   @unpack k2,k3,k4 = cache
   # @assert !integrator.u_modified
 
@@ -53,7 +57,7 @@ function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache;diagonal=fal
   # integrator.destats.nf += 1
 
   if cache.step <= 2 # Euler-Heun 
-    eulerHeun!(integrator, k1, cache)
+    eulerHeun!(integrator, k1, cache, f)
 
     # Update ABM's cache
     if cache.step == 1
@@ -64,7 +68,7 @@ function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache;diagonal=fal
     cache.step += 1
   else # Adams-Bashfourth-Moulton 4-3
     if cache.step <= 3
-      eulerHeun!(integrator, k1, cache)
+      eulerHeun!(integrator, k1, cache, f)
       cache.step +=1
     else
       foreach(zip(u.x,k1.x,k2.x,k3.x,k4.x)) do (uᵢ,k1ᵢ,k2ᵢ,k3ᵢ,k4ᵢ)
@@ -91,9 +95,8 @@ Euler-Heun's method
 y_{n+1} = y_{n} + Δt/2 [f(t+Δt, ̃y_{n+1}) + f(t, y_{n})]
 ̃y_{n+1} = y_{n} + Δt f(t, y_{n})
 """
-function eulerHeun!(integrator,k1,cache::OrdinaryDiffEq.ABM43ConstantCache;diagonal=false)
+function eulerHeun!(integrator,k1,cache::OrdinaryDiffEq.ABM43ConstantCache,f)
   @unpack t_idxs, dt_idxs, dt, u, f, p = integrator
-  f = !diagonal ? integrator.f : integrator.f_diag
   @unpack k2,k3,k4 = cache
   # @assert !integrator.u_modified
 

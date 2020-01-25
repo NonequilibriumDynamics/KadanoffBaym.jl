@@ -5,15 +5,15 @@ using RecursiveArrayTools
 using OrdinaryDiffEq
 
 # Define your Green functions at t0
-Lesser0 = KadanoffBaym.LesserGF(ones(Float64,1,1))
-Greater0 = KadanoffBaym.GreaterGF(ones(ComplexF64,1,1))
+Lesser0 = KadanoffBaym.LesserGF(1im * ones(ComplexF64,1,1))
+Greater0 = KadanoffBaym.GreaterGF(zeros(ComplexF64,1,1))
 
 # Pack them in an ArrayPartition
 u0 = ArrayPartition(Lesser0, Greater0);
 
 # Remember that `u` here is also an ArrayPartition-like element
 function f(u, p, t, t′)
-  return ArrayPartition(u.x[1][t,t′], u.x[2][t,t′])
+  return ArrayPartition(1im * u.x[2][t,t′], 1im * u.x[1][t,t′])
 end
 
 # ODE problem is defined by the rhs, initial condition and time span
@@ -28,6 +28,5 @@ dt = 0.001
 
 sol = solve(prob, alg, dt)
 
-@test sol.u.x[1][1,:][end] ≈ exp(1)
-@test sol.u.x[1][:,1][end] ≈ -exp(1)
-@test sol.u.x[1][end] ≈ exp(2)
+@test sol.u.x[1][:,1][end] ≈ 1im * cos(1)
+@test sol.u.x[2][:,1][end] ≈ -sin(1)
