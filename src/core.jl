@@ -21,6 +21,9 @@ function perform_step!(integrator::KBIntegrator,caches::KBCaches,repeat_step=fal
     abm43!(integrator, caches.line[t], integrator.f)
   end
 
+  # Sets up memory rhs of the next cache
+  fill_cache!(integrator, caches.line[T+1])
+
   # Step the diagonal through reflections
   if integrator.f_diag === nothing
     integrator.t_idxs = (T, T+1)
@@ -57,19 +60,13 @@ function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,f)
   # integrator.destats.nf += 1
 
   if cache.step <= 2 # Euler-Heun 
-    eulerHeun!(integrator, k1, cache, f)
-
-    # Update ABM's cache
-    if cache.step == 1
-      cache.k3 = k1
-    else
-      cache.k2 = k1
-    end
     cache.step += 1
+    eulerHeun!(integrator, k1, cache, f)
+    
   else # Adams-Bashfourth-Moulton 4-3
     if cache.step <= 3
-      eulerHeun!(integrator, k1, cache, f)
-      cache.step +=1
+      cache.step += 1
+      eulerHeun!(integrator, k1, cache, f) # Predictor
     else
       foreach(zip(u.x,k1.x,k2.x,k3.x,k4.x)) do (uᵢ,k1ᵢ,k2ᵢ,k3ᵢ,k4ᵢ)
         uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/24) * (55*k1ᵢ - 59*k2ᵢ + 37*k3ᵢ - 9*k4ᵢ) # Predictor
@@ -82,12 +79,12 @@ function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,f)
     foreach(zip(u.x,k.x,k1.x,k2.x,k3.x)) do (uᵢ,kᵢ,k1ᵢ,k2ᵢ,k3ᵢ)
       uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/24) * (9*kᵢ + 19*k1ᵢ - 5*k2ᵢ + k3ᵢ) # Corrector
     end
-
-    # Update ABM's cache
-    cache.k4 = k3
-    cache.k3 = k2
-    cache.k2 = k1
   end
+
+  # Update ABM's cache
+  cache.k4 = k3
+  cache.k3 = k2
+  cache.k2 = k1
 end
 
 """
@@ -112,4 +109,17 @@ function eulerHeun!(integrator,k1,cache::OrdinaryDiffEq.ABM43ConstantCache,f)
   end
 end
 
+"""
+Reflections allow us to fill up the cache
+"""
+function fill_cache!(integrator, cache::OrdinaryDiffEq.ABM43ConstantCache)
+  @unpack t_idxs, u, p, f = integrator
 
+  t, t′ = t_idxs
+  ts = t:-1:max(t-3, 1)
+
+  for (t, k) in zip(ts, (:k2, :k3, :k4))
+    setfield!(cache, k, f(u, p, t, t′+1))
+    cache.step += 1
+  end
+end
