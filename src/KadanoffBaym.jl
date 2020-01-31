@@ -4,15 +4,15 @@ module KadanoffBaym
 
 using LinearAlgebra
 using EllipsisNotation
+using MuladdMacro
 using RecursiveArrayTools
-# using MuladdMacro
 using Parameters
 using DataStructures
 using OrdinaryDiffEq
 
 using Reexport
 @reexport using DiffEqBase
-import DiffEqBase.__init, DiffEqBase.solve!
+import DiffEqBase: __init, solve!, @..
 
 include("utils.jl")
 include("gf.jl")

@@ -55,7 +55,7 @@ Base.setindex!(A::GreenFunction, v, I...) = _setindex!(A, v, front2_last(I)...)
 # _setindex!(A::GreaterGF, v, L::NTuple{2, Int64}, F...) = begin @assert >=(L...) "t<t′"; __setindex!(A, v, L, F...) end
 _setindex!(A::GreenFunction, v, F::NTuple{2, Union{Int64, Colon}}, L::Tuple) = __setindex!(A, v, F, L)
 
-@inline function __setindex!(A::GreenFunction, v, F::Tuple{T,U}, L::Tuple) where {T,U}
+@inline function __setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, F::Tuple{F1,F2}, L::Tuple) where {T,S,F1,F2}
   if ==(F...)
     setindex!(A.data, v, F..., L...)
   else 
@@ -65,22 +65,6 @@ _setindex!(A::GreenFunction, v, F::NTuple{2, Union{Int64, Colon}}, L::Tuple) = _
 end
 
 Base.copy(A::GreenFunction) = typeof(A)(recursivecopy(A.data))
-
-function symmetrize!(A::GreenFunction{I,S,U}) where {I,S,U}
-  T, T′ = first2(size(A))
-  if U === Lesser
-    for t′ in 1:1:T′, t in 1:1:t′
-      A[t,t′] = A[t,t′]
-    end
-  elseif U === Greater
-    for t in 1:1:T, t′ in 1:1:t
-      A[t,t′] = A[t,t′]
-    end
-  else
-    error("Type not supported")
-  end
-  A
-end
 
 for g in (:GreenFunction, )
   for f in (:-, :conj, :real, :imag, :adjoint, :transpose, :inv)
@@ -96,9 +80,11 @@ for g in (:GreenFunction, )
     end
   end
 
-  for f in (:+, :-, :*, :\, :/)
+  for f in (:+, :-, :\, :/)
       @eval (Base.$f)(A::$g{T,S,U}, B::$g{T,S,U}) where {T,S,U} = $g(Base.$f(A.data, B.data), U)
   end
+
+  @eval Base.:*(A::$g{T,S,U}, B::$g{T,S,<:Union{Greater,Lesser}}) where{T,S,U<:Union{Greater,Lesser}} = $g(Base.:*(A.data, B.data), U)
 
   @eval Base.:+(A::$g{T,S,U}, B::$g{T,S,U}...) where {T,S,U} = Base.+(A.data, getfield.(B,:data)...)
 end
@@ -117,6 +103,22 @@ function Base.show(io::IO, x::GreenFunction)
       end
     end
   end
+end
+
+function symmetrize!(A::GreenFunction{I,S,U}) where {I,S,U}
+  T, T′ = first2(size(A))
+  if U === Lesser
+    for t′ in 1:1:T′, t in 1:1:t′
+      A[t,t′] = A[t,t′]
+    end
+  elseif U === Greater
+    for t in 1:1:T, t′ in 1:1:t
+      A[t,t′] = A[t,t′]
+    end
+  else
+    error("Type not supported")
+  end
+  A
 end
 
 function resize(A::GreenFunction, t::NTuple{2,Int})

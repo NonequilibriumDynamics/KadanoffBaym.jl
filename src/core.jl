@@ -51,7 +51,7 @@ Adams-Bashfourth-Moulton 43 predictor corrector method
 y_{n+1} = y_{n} + Δt/24 [9 f(̃y_{n+1}) + 19 f(y_{n}) - 5 f(y_{n-1}) + f(y_{n-2})]
 ̃y_{n+1} = y_{n} + Δt/24 [55 f(y_{n}) - 59 f(y_{n-1}) + 37 f(y_{n-2}) - 9 f(y_{n-3})]
 """
-function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,f)
+@muladd function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,f)
   @unpack t_idxs, dt_idxs, dt, u, p = integrator
   @unpack k2,k3,k4 = cache
   # @assert !integrator.u_modified
@@ -69,7 +69,7 @@ function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,f)
       eulerHeun!(integrator, k1, cache, f) # Predictor
     else
       foreach(zip(u.x,k1.x,k2.x,k3.x,k4.x)) do (uᵢ,k1ᵢ,k2ᵢ,k3ᵢ,k4ᵢ)
-        uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/24) * (55*k1ᵢ - 59*k2ᵢ + 37*k3ᵢ - 9*k4ᵢ) # Predictor
+        @.. uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/24) * (55*k1ᵢ - 59*k2ᵢ + 37*k3ᵢ - 9*k4ᵢ) # Predictor
       end
     end
     
@@ -77,7 +77,7 @@ function abm43!(integrator,cache::OrdinaryDiffEq.ABM43ConstantCache,f)
     # integrator.destats.nf += 1
 
     foreach(zip(u.x,k.x,k1.x,k2.x,k3.x)) do (uᵢ,kᵢ,k1ᵢ,k2ᵢ,k3ᵢ)
-      uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/24) * (9*kᵢ + 19*k1ᵢ - 5*k2ᵢ + k3ᵢ) # Corrector
+      @.. uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/24) * (9*kᵢ + 19*k1ᵢ - 5*k2ᵢ + k3ᵢ) # Corrector
     end
   end
 
@@ -92,20 +92,20 @@ Euler-Heun's method
 y_{n+1} = y_{n} + Δt/2 [f(t+Δt, ̃y_{n+1}) + f(t, y_{n})]
 ̃y_{n+1} = y_{n} + Δt f(t, y_{n})
 """
-function eulerHeun!(integrator,k1,cache::OrdinaryDiffEq.ABM43ConstantCache,f)
+@muladd function eulerHeun!(integrator,k1,cache::OrdinaryDiffEq.ABM43ConstantCache,f)
   @unpack t_idxs, dt_idxs, dt, u, p = integrator
   @unpack k2,k3,k4 = cache
   # @assert !integrator.u_modified
 
   foreach(zip(u.x, k1.x)) do (uᵢ, k1ᵢ)
-    uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + dt * k1ᵢ # Predictor
+    @.. uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + dt * k1ᵢ # Predictor
   end
 
   k = f(u, p, (t_idxs .+ dt_idxs)...)
   # integrator.destats.nf += 1
 
   foreach(zip(u.x,k.x,k1.x)) do (uᵢ,kᵢ,k1ᵢ)
-    uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/2) * (kᵢ + k1ᵢ) # Corrector
+    @.. uᵢ[(t_idxs .+ dt_idxs)...] = uᵢ[t_idxs...] + (dt/2) * (kᵢ + k1ᵢ) # Corrector
   end
 end
 
