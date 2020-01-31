@@ -1,87 +1,61 @@
-abstract type GreenFunction end
+abstract type GreenFunctionType end
 
 # """
 # Defined as
 #     G^<(t,t') = -i < a^{\dagger}(t') a(t) > for t <= t'
 # """
-struct LesserGF{T,S<:AbstractArray{<:T}} <: GreenFunction
-  data::S
-
-  function LesserGF{T,S}(data) where {T, S<:AbstractArray{<:T}}
-    # Base.require_one_based_indexing(data)
-    new{T,S}(data)
-  end
-end
-
-function LesserGF(A::AbstractArray)
-  LinearAlgebra.checksquare(A)
-  return lesserGF_type(typeof(A))(A)
-end
-
-LesserGF(::Type{T}, method, dims::Int...) where {T} = LesserGF(T(method, dims))
-LesserGF(::Type{T}, dims::Int...) where {T} = LesserGF(T, undef, dims...)
-
-function lesserGF_type(::Type{T}) where {S<:Number, T<:AbstractArray{S}}
-  return LesserGF{S, T}
-end
-function lesserGF_type(::Type{T}) where {S<:AbstractArray, T<:AbstractArray{S}}
-  return LesserGF{AbstractArray, T}
-end
+struct Lesser <: GreenFunctionType end
 
 # """
 # Defined as
 #     G^>(t,t') = -i < a(t)a^{\dagger}(t')  > for t > t'
 # """
-struct GreaterGF{T,S<:AbstractArray{<:T}} <: GreenFunction
+struct Greater <: GreenFunctionType end
+
+
+struct GreenFunction{T, S<: AbstractArray{<:T}, U}
   data::S
 
-  function GreaterGF{T,S}(data) where {T, S<:AbstractArray{<:T}}
-    # Base.require_one_based_indexing(data)
-    new{T,S}(data)
+  function GreenFunction{T,S,U}(data) where {T, S<:AbstractArray{<:T}, U}
+    new{T,S,U}(recursivecopy(data))
   end
 end
 
-function GreaterGF(A::AbstractArray)
+function GreenFunction(A::AbstractArray, U::Type{<:GreenFunctionType})
   LinearAlgebra.checksquare(A)
-  return greaterGF_type(typeof(A))(A)
+  return GF_type(typeof(A), U)(A)
 end
 
-GreaterGF(::Type{T}, method, dims::Int...) where {T} = GreaterGF(T(method, dims))
-GreaterGF(::Type{T}, dims::Int...) where {T} = GreaterGF(T, undef, dims...)
-
-function greaterGF_type(::Type{T}) where {S<:Number, T<:AbstractArray{S}}
-  return GreaterGF{S, T}
-end
-function greaterGF_type(::Type{T}) where {S<:AbstractArray, T<:AbstractArray{S}}
-  return GreaterGF{AbstractArray, T}
+function GF_type(::Type{T}, U) where {S<:Number, T<:AbstractArray{S}}
+  GreenFunction{S, T, U}
 end
 
-const LesserOrGreater{T,S} = Union{LesserGF{T,S}, GreaterGF{T,S}}
+function GF_type(::Type{T}, U) where {S<:AbstractArray, T<:AbstractArray{S}}
+  return GreenFunction{AbstractArray, T, U}
+end
 
-Base.eltype(::Type{<:LesserOrGreater{T,S}}) where {T,S} = eltype(S)
+Base.eltype(::GreenFunction{T,S,U}) where {T,S,U} = eltype(S)
 Base.convert(T::Type{<:GreenFunction}, m::AbstractArray) = T(m)
 
-Base.size(A::LesserOrGreater) = size(A.data)
-Base.length(A::LesserOrGreater) = length(A.data)
-Base.size(A::LesserOrGreater{AbstractArray, S}) where S = tuplejoin(size(A.data), size(first(A.data)))
-Base.length(A::LesserOrGreater{AbstractArray, S}) where S = length(A.data) * length(first(A.data))
+Base.size(A::GreenFunction) = size(A.data)
+Base.length(A::GreenFunction) = length(A.data)
 
-# Base.firstindex(A::LesserOrGreater) = firstindex(A.data)
-# Base.lastindex(A::LesserOrGreater) = lastindex(A.data)
+Base.firstindex(A::GreenFunction) = firstindex(A.data)
+Base.lastindex(A::GreenFunction) = lastindex(A.data)
 
-Base.getindex(A::LesserOrGreater, F::Vararg{Union{Int64, Colon}, 2}) = Base.getindex(A.data, F..., ..)
-Base.getindex(A::LesserOrGreater, I...) = Base.getindex(A.data, I...)
-Base.getindex(A::LesserOrGreater{AbstractArray, S}, F::Vararg{Union{Int64, Colon}, 2}) where S = Base.getindex(A.data, F...)
-Base.getindex(A::LesserOrGreater{AbstractArray, S}, I...) where S = Base.getindex(Base.getindex(A.data, front2(I)...), tail2(I)...)
+Base.getindex(A::GreenFunction, I::Int64) = error("Single indexing not allowed")
+Base.getindex(A::GreenFunction, F::Vararg{Union{Int64, Colon}, 2}) = Base.getindex(A.data, F..., ..)
+Base.getindex(A::GreenFunction, I...) = Base.getindex(A.data, I...)
 
-Base.setindex!(A::LesserOrGreater, v, F::Vararg{Union{Int64, Colon}, 2}) = __setindex!(A, v, F, (..,))
-Base.setindex!(A::LesserOrGreater, v, I...) = _setindex!(A, v, front2_last(I)...)
+Base.setindex!(A::GreenFunction, I::Int64) = error("Single indexing not allowed")
+Base.setindex!(A::GreenFunction, v, F::Vararg{Union{Int64, Colon}, 2}) = __setindex!(A, v, F, (..,))
+Base.setindex!(A::GreenFunction, v, I...) = _setindex!(A, v, front2_last(I)...)
 
 # _setindex!(A::LesserGF, v, L::NTuple{2, Int64}, F...) = begin @assert <=(L...) "t>t′"; __setindex!(A, v, L, F...) end
 # _setindex!(A::GreaterGF, v, L::NTuple{2, Int64}, F...) = begin @assert >=(L...) "t<t′"; __setindex!(A, v, L, F...) end
-_setindex!(A::LesserOrGreater, v, F::NTuple{2, Union{Int64, Colon}}, L::Tuple) = __setindex!(A, v, F, L)
+_setindex!(A::GreenFunction, v, F::NTuple{2, Union{Int64, Colon}}, L::Tuple) = __setindex!(A, v, F, L)
 
-@inline function __setindex!(A::LesserOrGreater, v, F::Tuple{T,U}, L::Tuple) where {T,U}
+@inline function __setindex!(A::GreenFunction, v, F::Tuple{T,U}, L::Tuple) where {T,U}
   if ==(F...)
     setindex!(A.data, v, F..., L...)
   else 
@@ -90,66 +64,47 @@ _setindex!(A::LesserOrGreater, v, F::NTuple{2, Union{Int64, Colon}}, L::Tuple) =
   end
 end
 
-@inline function __setindex!(A::LesserOrGreater{AbstractArray, S}, v, F::Tuple{T,U}, L::Tuple) where {S,T,U}
-  if ==(F...)
-    setindex!(A.data[F...], v , L...)
-  else 
-    setindex!(A.data[F...], v , L...)
-    setindex!(A.data[reverse(F)...], -adjoint(v) , L...)
-  end
-end
+Base.copy(A::GreenFunction) = typeof(A)(recursivecopy(A.data))
 
-# Base.iterate(A::LesserOrGreater, state=1) = iterate(A.data, state)
-Base.copy(A::LesserOrGreater) = typeof(A)(copy(A.data))
-
-function symmetrize!(A::LesserOrGreater)
+function symmetrize!(A::GreenFunction{I,S,U}) where {I,S,U}
   T, T′ = first2(size(A))
-  if typeof(A) <: LesserGF
+  if U === Lesser
     for t′ in 1:1:T′, t in 1:1:t′
       A[t,t′] = A[t,t′]
     end
-  else
+  elseif U === Greater
     for t in 1:1:T, t′ in 1:1:t
       A[t,t′] = A[t,t′]
     end
+  else
+    error("Type not supported")
   end
   A
 end
 
-# struct RetardedGF <: GreenFunction end
-# struct AdvancedGF <: GreenFunction end
-# struct TimeOrderedGF <: GreenFunction end
-# struct AntiTimeOrderedGF <: GreenFunction end
-
-for g in (:LesserGF, :GreaterGF)
+for g in (:GreenFunction, )
   for f in (:-, :conj, :real, :imag, :adjoint, :transpose, :inv)
-      @eval (Base.$f)(A::$g) = $g(Base.$f(A.data))
+      @eval (Base.$f)(A::$g{T,S,U}) where {T,S,U} = $g(Base.$f(A.data), U)
   end
-
-  # for f in (:tr)
-  #     @eval (LinearAlgebra.$f)(A::$g) = LinearAlgebra.$f(A.data)
-  # end
 
   for f in (:+, :-, :/, :\, :*)
     if f != :/  
-        @eval (Base.$f)(A::Number, B::$g) = $g(Base.$f(A, B.data))
+        @eval (Base.$f)(A::Number, B::$g{T,S,U}) where {T,S,U} = $g(Base.$f(A, B.data), U)
     end
     if f != :\
-        @eval (Base.$f)(A::$g, B::Number) = $g(Base.$f(A.data, B))
+        @eval (Base.$f)(A::$g{T,S,U}, B::Number) where {T,S,U} = $g(Base.$f(A.data, B), U)
     end
   end
 
   for f in (:+, :-, :*, :\, :/)
-    # for g′ in (:LesserGF, :GreaterGF)
-      @eval (Base.$f)(A::$g, B::$g) = $g(Base.$f(A.data, B.data))
-    # end
+      @eval (Base.$f)(A::$g{T,S,U}, B::$g{T,S,U}) where {T,S,U} = $g(Base.$f(A.data, B.data), U)
   end
 
-  @eval Base.:+(A::$g, B::$g...) = Base.+(A.data, getfield.(B,:data)...)
+  @eval Base.:+(A::$g{T,S,U}, B::$g{T,S,U}...) where {T,S,U} = Base.+(A.data, getfield.(B,:data)...)
 end
 
-function Base.show(io::IO, x::LesserOrGreater)
-  if get(io, :compact, false) || get(io, :typeinfo, nothing) == LesserOrGreater
+function Base.show(io::IO, x::GreenFunction)
+  if get(io, :compact, false) || get(io, :typeinfo, nothing) == GreenFunction
     Base.show_default(IOContext(io, :limit => true), x)
   else
     # dump(IOContext(io, :limit => true), p, maxdepth=1)
@@ -164,7 +119,7 @@ function Base.show(io::IO, x::LesserOrGreater)
   end
 end
 
-function resize(A::LesserOrGreater, t::NTuple{2,Int})
+function resize(A::GreenFunction, t::NTuple{2,Int})
   if eltype(A) <: AbstractArray
     newdata = fill(eltype(A)(undef,t...,size(first(A))...))
   else

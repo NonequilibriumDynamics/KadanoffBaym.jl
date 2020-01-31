@@ -8,11 +8,11 @@ using OrdinaryDiffEq: ODEProblem, solve, ABM43
 λ = 0.2
 
 # Define your Green functions at t0
-Greater = KadanoffBaym.GreaterGF(zeros(ComplexF64,1,1))
-Lesser = KadanoffBaym.LesserGF(1im * ones(ComplexF64,1,1))
+ggf = KadanoffBaym.GreenFunction(zeros(ComplexF64,1,1), KadanoffBaym.Greater)
+lgf = KadanoffBaym.GreenFunction(1im * ones(ComplexF64,1,1), KadanoffBaym.Lesser)
 
 # Pack them in an ArrayPartition
-u0 = ArrayPartition(Greater, Lesser);
+u0 = ArrayPartition(ggf, lgf);
 
 # Remember that `u` here is also an ArrayPartition-like element
 function f(u, p, t, t′)
@@ -46,7 +46,7 @@ times = first.(sol.t[:,1])
 
 @testset begin
   for (i, t) in Iterators.enumerate(times)
-    @test sol.u.x[1][:,1][i] ≈ sol1(t, Lesser[1,1], Greater[1,1], λ)
-    @test sol.u.x[2][:,1][i] ≈ sol2(t, Lesser[1,1], Greater[1,1], λ)
+    @test sol.u.x[1][:,1][i] ≈ sol1(t, lgf[1,1], ggf[1,1], λ)
+    @test sol.u.x[2][:,1][i] ≈ sol2(t, lgf[1,1], ggf[1,1], λ)
   end
 end

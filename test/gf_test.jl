@@ -1,7 +1,10 @@
 using Test
+using BenchmarkTools
 
 using LinearAlgebra
 using EllipsisNotation
+using RecursiveArrayTools
+
 include("../src/utils.jl")
 include("../src/gf.jl")
 
@@ -11,8 +14,8 @@ N = 10
 data = rand(ComplexF64, N, N)
 data -= transpose(data)
 
-lgf = LesserGF(copy(data))
-ggf = GreaterGF(copy(data))
+lgf = GreenFunction(copy(data), Lesser)
+ggf = GreenFunction(copy(data), Greater)
 
 v = 30 + 30im
 lgf[2,N] = v
@@ -28,8 +31,8 @@ ggf[N,2] = v
 data = rand(ComplexF64, N, N, N, N)
 data -= permutedims(data, [1,2,4,3])
 
-lgf = LesserGF(copy(data))
-ggf = GreaterGF(copy(data))
+lgf = GreenFunction(copy(data), Lesser)
+ggf = GreenFunction(copy(data), Greater)
 
 v = rand(ComplexF64, N, N)
 lgf[2,N] = v
@@ -43,7 +46,7 @@ ggf[N,2] = v
 
 # Test AbstractArray-like behaviour
 data = rand(ComplexF64, N, N, N, N)
-gf = LesserGF(copy(data))
+gf = GreenFunction(copy(data), Lesser)
 
 @test (-gf).data == (-data)
 @test (conj(gf)).data == conj(data)
@@ -64,7 +67,6 @@ gf[:,:,1,1] = temp
 data[:,:,1,1] = temp
 @test gf.data == data
 
-using BenchmarkTools
 
 function setindexA(A::AbstractArray)
   for i=1:N, j=1:i
@@ -84,17 +86,17 @@ end
 @show @btime setindexG($gf)
 
 
-data = [rand(ComplexF64, N, N) for i in 1:N, j in 1:N]
-lgf = LesserGF(copy(data))
+# data = [rand(ComplexF64, N, N) for i in 1:N, j in 1:N]
+# lgf = LesserGF(copy(data))
 
-@test lgf[1,2,3,4] == data[1,2][3,4]
+# @test lgf[1,2,3,4] == data[1,2][3,4]
 
-temp = 1.0 + 2.0im
-lgf[1,2,3,4] = temp
-@test lgf.data[1,2][3,4] == temp
-@test lgf.data[2,1][3,4] == -conj(temp)
+# temp = 1.0 + 2.0im
+# lgf[1,2,3,4] = temp
+# @test lgf.data[1,2][3,4] == temp
+# @test lgf.data[2,1][3,4] == -conj(temp)
 
-temp = rand(ComplexF64, N, N)
-lgf[1,2] = temp
-@test lgf.data[1,2] == temp
-@test lgf.data[2,1] == -conj(temp)
+# temp = rand(ComplexF64, N, N)
+# lgf[1,2] = temp
+# @test lgf.data[1,2] == temp
+# @test lgf.data[2,1] == -conj(temp)
