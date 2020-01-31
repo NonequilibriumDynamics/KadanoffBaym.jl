@@ -21,9 +21,6 @@ function perform_step!(integrator::KBIntegrator,caches::KBCaches,repeat_step=fal
     abm43!(integrator, caches.line[t], integrator.f)
   end
 
-  # Sets up memory rhs of the next cache
-  fill_cache!(integrator, caches.line[T+1])
-
   # Step the diagonal through reflections
   if integrator.f_diag === nothing
     integrator.t_idxs = (T, T+1)
@@ -41,6 +38,9 @@ function perform_step!(integrator::KBIntegrator,caches::KBCaches,repeat_step=fal
     abm43!(integrator, caches.diagonal, integrator.f_diag)
     integrator.dt_idxs = (1, 0)
   end
+
+  # Sets up rhs memory of the next cache
+  fill_cache!(integrator, caches.line[T+1])
 
   @assert dt_idxs == (1, 0)
   @assert integrator.t_idxs == (T, T)
@@ -93,7 +93,7 @@ y_{n+1} = y_{n} + Δt/2 [f(t+Δt, ̃y_{n+1}) + f(t, y_{n})]
 ̃y_{n+1} = y_{n} + Δt f(t, y_{n})
 """
 function eulerHeun!(integrator,k1,cache::OrdinaryDiffEq.ABM43ConstantCache,f)
-  @unpack t_idxs, dt_idxs, dt, u, f, p = integrator
+  @unpack t_idxs, dt_idxs, dt, u, p = integrator
   @unpack k2,k3,k4 = cache
   # @assert !integrator.u_modified
 
@@ -118,6 +118,7 @@ function fill_cache!(integrator, cache::OrdinaryDiffEq.ABM43ConstantCache)
   t, t′ = t_idxs
   ts = t:-1:max(t-3, 1)
 
+  cache.step = 1
   for (t, k) in zip(ts, (:k2, :k3, :k4))
     setfield!(cache, k, f(u, p, t, t′+1))
     cache.step += 1
