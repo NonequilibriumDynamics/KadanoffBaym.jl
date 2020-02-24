@@ -3,21 +3,22 @@
 module KadanoffBaym
 
 using LinearAlgebra
-using EllipsisNotation
 using MuladdMacro
-using RecursiveArrayTools
 using Parameters
-using DataStructures
-using OrdinaryDiffEq
-
 using Reexport
-@reexport using DiffEqBase
+@reexport using EllipsisNotation
+@reexport using RecursiveArrayTools
+
 import DiffEqBase: __init, solve!, @..
+@reexport using OrdinaryDiffEq
 
 include("utils.jl")
 include("gf.jl")
 
 include("common.jl")
 include("core.jl")
+
+export GreenFunction, Lesser, Greater
+export KB
 
 end
