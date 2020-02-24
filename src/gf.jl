@@ -51,6 +51,9 @@ Base.setindex!(A::GreenFunction, I::Int64) = error("Single indexing not allowed"
 Base.setindex!(A::GreenFunction, v, F::Vararg{Union{Int64, Colon}, 2}) = __setindex!(A, v, F, (..,))
 Base.setindex!(A::GreenFunction, v, I...) = _setindex!(A, v, front2_last(I)...)
 
+# NOTE: This is absolutely fundamental to make sure that getelement of VectorOfArray returns non-eltype-Any arrays
+RecursiveArrayTools.VectorOfArray(vec::AbstractVector{GreenFunction}, dims::NTuple{N}) where {N} = error("eltype of the GreenFunctions must be the same")
+RecursiveArrayTools.VectorOfArray(vec::AbstractVector{GreenFunction{T,S}}, dims::NTuple{N}) where {T, S, N} = VectorOfArray{T, N, typeof(vec)}(vec)
 # _setindex!(A::LesserGF, v, L::NTuple{2, Int64}, F...) = begin @assert <=(L...) "t>t′"; __setindex!(A, v, L, F...) end
 # _setindex!(A::GreaterGF, v, L::NTuple{2, Int64}, F...) = begin @assert >=(L...) "t<t′"; __setindex!(A, v, L, F...) end
 _setindex!(A::GreenFunction, v, F::NTuple{2, Union{Int64, Colon}}, L::Tuple) = __setindex!(A, v, F, L)

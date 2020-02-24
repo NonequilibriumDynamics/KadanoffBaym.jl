@@ -9,7 +9,7 @@ using Reexport
 @reexport using EllipsisNotation
 @reexport using RecursiveArrayTools
 
-import DiffEqBase: __init, solve!, @..
+import DiffEqBase: __init, solve!
 @reexport using OrdinaryDiffEq
 
 include("utils.jl")

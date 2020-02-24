@@ -9,11 +9,11 @@ end
 Performs a Kadanoff-Baym time step
 """
 function perform_step!(integrator::KBIntegrator,caches::KBCaches,repeat_step=false)
-  @unpack t_idxs, dt_idxs = integrator
-
   # @assert !integrator.u_modified
-  @assert dt_idxs == (1, 0)
-  T, T = t_idxs
+  @assert integrator.dt_idxs == (1, 0)
+  @assert ==(integrator.t_idxs...)
+  
+  T = first(integrator.t_idxs)
 
   # Step all previous times
   for t in 1:T
@@ -42,7 +42,7 @@ function perform_step!(integrator::KBIntegrator,caches::KBCaches,repeat_step=fal
   # Sets up rhs memory of the next cache
   fill_cache!(integrator, caches.line[T+1])
 
-  @assert dt_idxs == (1, 0)
+  @assert integrator.dt_idxs == (1, 0)
   @assert integrator.t_idxs == (T, T)
 end
 
@@ -68,13 +68,13 @@ y_{n+1} = y_{n} + Δt/24 [9 f(̃y_{n+1}) + 19 f(y_{n}) - 5 f(y_{n-1}) + f(y_{n-2
       cache.step += 1
       eulerHeun!(integrator, k1, cache, f) # Predictor
     else
-      u[(t_idxs .+ dt_idxs)..., ..] = u[t_idxs..., ..] + (dt/24) * (55*k1 - 59*k2 + 37*k3 - 9*k4) # Predictor
+      @. u[(t_idxs .+ dt_idxs)..., ..] = u[t_idxs..., ..] + (dt/24) * (55*k1 - 59*k2 + 37*k3 - 9*k4) # Predictor
     end
     
     k = f(u, p, (t_idxs .+ dt_idxs)...)
     # integrator.destats.nf += 1
 
-    u[(t_idxs .+ dt_idxs)..., ..] = u[t_idxs..., ..] + (dt/24) * (9*k + 19*k1 - 5*k2 + k3) # Corrector
+    @. u[(t_idxs .+ dt_idxs)..., ..] = u[t_idxs..., ..] + (dt/24) * (9*k + 19*k1 - 5*k2 + k3) # Corrector
   end
 
   # Update ABM's cache
@@ -93,12 +93,12 @@ y_{n+1} = y_{n} + Δt/2 [f(t+Δt, ̃y_{n+1}) + f(t, y_{n})]
   @unpack k2,k3,k4 = cache
   # @assert !integrator.u_modified
 
-  u[(t_idxs .+ dt_idxs)..., ..] = u[t_idxs..., ..] + dt * k1 # Predictor
+  @. u[(t_idxs .+ dt_idxs)..., ..] = u[t_idxs..., ..] + dt * k1 # Predictor
 
   k = f(u, p, (t_idxs .+ dt_idxs)...)
   # integrator.destats.nf += 1
 
-  u[(t_idxs .+ dt_idxs)..., ..] = u[t_idxs..., ..] + (dt/2) * (k + k1) # Corrector
+  @. u[(t_idxs .+ dt_idxs)..., ..] = u[t_idxs..., ..] + (dt/2) * (k + k1) # Corrector
 end
 
 """

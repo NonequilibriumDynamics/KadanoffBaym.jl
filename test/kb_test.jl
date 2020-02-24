@@ -11,6 +11,7 @@ lgf = GreenFunction(1im * ones(ComplexF64,1,1), Lesser)
 
 # Pack them in a VectorOfArray
 u0 = VectorOfArray([ggf, lgf]);
+@assert eltype(u0[1,1,:]) !== Any
 
 # Remember that `u` here is also an ArrayPartition-like element
 function f(u, p, t, t′)
