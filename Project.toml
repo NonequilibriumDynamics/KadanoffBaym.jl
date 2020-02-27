@@ -1,0 +1,13 @@
+name = "KadanoffBaym"
+uuid = "82532805-809c-4ef0-842b-4b00c5e9be5f"
+authors = ["Francisco Meirinhos"]
+version = "0.1.0"
+
+[deps]
+DiffEqBase = "2b5f629d-d688-5b77-993f-72d75c75574e"
+EllipsisNotation = "da5c29d0-fa7d-589e-88eb-ea29b0a81949"
+MuladdMacro = "46d2c3a1-f734-5fdb-9937-b9b9aeba4221"
+OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
+Parameters = "d96e819e-fc66-5662-9728-84c9c7592b0a"
+RecursiveArrayTools = "731186ca-8d62-57ce-b412-fbd966d074cd"
+Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
