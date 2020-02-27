@@ -120,7 +120,7 @@ function symmetrize!(A::GreenFunction{I,S,U}) where {I,S,U}
   A
 end
 
-function resize(A::GreenFunction, t::NTuple{2,Int})
+function resize(A::GreenFunction, t::Vararg{Int,2})
   if eltype(A) <: AbstractArray
     newdata = fill(eltype(A)(undef,t...,size(first(A))...))
   else

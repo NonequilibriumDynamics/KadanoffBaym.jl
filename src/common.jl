@@ -63,7 +63,7 @@ function DiffEqBase.__init(prob::ODEProblem,
 
   @assert typeof(prob.u0) <: VectorOfArray{T,N,<:AbstractArray{<:GreenFunction}} where {T,N} "Green functions need to be inside a VectorOfArray"
 
-  u = VectorOfArray([map(x->x[1,1], prob.u0)...]) # it's also ks
+  u = VectorOfArray([prob.u0[i][1,1] for i=1:length(prob.u0)]) # it's also ks
   uType = typeof(u)
 
   uBottomEltype = recursive_bottom_eltype(u)
@@ -118,7 +118,7 @@ function DiffEqBase.__init(prob::ODEProblem,
     ts = [(t + i*dt, t + j*dt) for i=0:steps-1, j=0:steps-1]
 
     timeseries = recursivecopy(prob.u0)
-    timeseries = VectorOfArray([map(g->resize(g, (steps,steps)), timeseries)...])
+    timeseries = VectorOfArray([resize(timeseries[i], steps, steps) for i=1:length(timeseries)])
     caches = alg_cache(alg,steps,0,recursivecopy(u),0,0,0,0,0,0,0,0,0,0,0,Val(false))
   else
     @assert false "Not yet supported"
