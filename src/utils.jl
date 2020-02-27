@@ -29,7 +29,7 @@ _last2(v1,v2) = (v1, v2)
 @inline front2_last(t::Tuple) = _front2_last(t...)
 _front2_last() = throw(ArgumentError("Cannot call front2_last on an empty tuple."))
 _front2_last(v) = throw(ArgumentError("Cannot call front2_last on 1-element tuple."))
-_front2_last(v1,v2, rest...) = ((v1,v2), rest)
+_front2_last(v1,v2, rest...) = ((v1,v2), rest...)
 
 # Return a `Tuple` consisting of a tuple of the first and a tuple of the last 2 components of `t`.
 @inline front_last2(t::Tuple) = _front_last2(t...)
