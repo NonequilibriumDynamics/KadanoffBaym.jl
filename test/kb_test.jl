@@ -6,12 +6,12 @@ using .KadanoffBaym
 λ = 0.2
 
 # Define your Green functions at t0
-ggf = GreenFunction(zeros(ComplexF64,1,1), Greater)
-lgf = GreenFunction(1im * ones(ComplexF64,1,1), Lesser)
+ggf = GreenFunction(zeros(ComplexF64,1,1,1,1), Greater)
+lgf = GreenFunction(1im * ones(ComplexF64,1,1,1,1), Lesser)
 
 # Pack them in a VectorOfArray
 u0 = VectorOfArray([ggf, lgf]);
-@assert eltype(u0[1,1,:]) !== Any
+@assert eltype(u0[1,1,..]) !== Any
 
 # Remember that `u` here is also an ArrayPartition-like element
 function f(u, p, t, t′)
@@ -44,7 +44,7 @@ times = first.(sol.t[:,1])
 
 @testset begin
   for (i, t) in Iterators.enumerate(times)
-    @test sol.u[1][:,1][i] ≈ sol1(t, lgf[1,1], ggf[1,1], λ)
-    @test sol.u[2][:,1][i] ≈ sol2(t, lgf[1,1], ggf[1,1], λ)
+    @test sol.u[1][:,1][i] ≈ sol1(t, lgf[1,1,1,1], ggf[1,1,1,1], λ)
+    @test sol.u[2][:,1][i] ≈ sol2(t, lgf[1,1,1,1], ggf[1,1,1,1], λ)
   end
 end

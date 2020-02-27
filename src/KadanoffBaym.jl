@@ -1,5 +1,3 @@
-# __precompile__(false)
-
 module KadanoffBaym
 
 using LinearAlgebra
@@ -21,4 +19,4 @@ include("core.jl")
 export GreenFunction, Lesser, Greater
 export KB
 
-end
+end # module

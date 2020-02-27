@@ -115,7 +115,7 @@ function DiffEqBase.__init(prob::ODEProblem,
   if !adaptive
     steps = Int(ceil(Int,(tspan[2]-tspan[1])/dt) + 1)
 
-    ts = map(is -> (t .+ is .* (dt, dt)), Iterators.product(0:(steps-1), 0:(steps-1)))
+    ts = [(t + i*dt, t + j*dt) for i=0:steps-1, j=0:steps-1]
 
     timeseries = recursivecopy(prob.u0)
     timeseries = VectorOfArray([map(g->resize(g, (steps,steps)), timeseries)...])

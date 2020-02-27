@@ -29,7 +29,7 @@ function perform_step!(integrator::KBIntegrator,caches::KBCaches,repeat_step=fal
 
     # Walking through the diagonal requires a backwards reflection
     foreach(integrator.u) do uᵢ
-      uᵢ[(T+1, T+1)...] = -adjoint(uᵢ[(T+1, T+1)...])
+      @views uᵢ[(T+1, T+1)...] = -adjoint(uᵢ[(T+1, T+1)...])
     end
 
   # Step the diagonal with the diagonal function
@@ -68,13 +68,17 @@ y_{n+1} = y_{n} + Δt/24 [9 f(̃y_{n+1}) + 19 f(y_{n}) - 5 f(y_{n-1}) + f(y_{n-2
       cache.step += 1
       eulerHeun!(integrator, k1, cache, f) # Predictor
     else
-      @. u[(t_idxs .+ dt_idxs)..., ..] = u[t_idxs..., ..] + (dt/24) * (55*k1 - 59*k2 + 37*k3 - 9*k4) # Predictor
+      for i in 1:length(u)
+        u[i][(t_idxs .+ dt_idxs)...] = u[i][t_idxs...] + (dt/24) * (55*k1[i] - 59*k2[i] + 37*k3[i] - 9*k4[i]) # Predictor
+      end
     end
     
     k = f(u, p, (t_idxs .+ dt_idxs)...)
     # integrator.destats.nf += 1
 
-    @. u[(t_idxs .+ dt_idxs)..., ..] = u[t_idxs..., ..] + (dt/24) * (9*k + 19*k1 - 5*k2 + k3) # Corrector
+    for i in 1:length(u) # MEMORY
+      u[i][(t_idxs .+ dt_idxs)...] = u[i][t_idxs...] + (dt/24) * (9*k[i] + 19*k1[i] - 5*k2[i] + k3[i]) # Corrector
+    end
   end
 
   # Update ABM's cache
@@ -93,12 +97,16 @@ y_{n+1} = y_{n} + Δt/2 [f(t+Δt, ̃y_{n+1}) + f(t, y_{n})]
   @unpack k2,k3,k4 = cache
   # @assert !integrator.u_modified
 
-  @. u[(t_idxs .+ dt_idxs)..., ..] = u[t_idxs..., ..] + dt * k1 # Predictor
+  for i in 1:length(u) # MEMORY
+    u[i][(t_idxs .+ dt_idxs)...] = u[i][t_idxs...] + dt * k1[i] # Predictor
+  end
 
   k = f(u, p, (t_idxs .+ dt_idxs)...)
   # integrator.destats.nf += 1
 
-  @. u[(t_idxs .+ dt_idxs)..., ..] = u[t_idxs..., ..] + (dt/2) * (k + k1) # Corrector
+  for i in 1:length(u) # MEMORY
+    u[i][(t_idxs .+ dt_idxs)...] = u[i][t_idxs...] + (dt/2) * (k[i] + k1[i]) # Corrector
+  end
 end
 
 """
