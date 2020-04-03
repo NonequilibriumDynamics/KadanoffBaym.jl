@@ -12,52 +12,47 @@ struct Lesser <: GreenFunctionType end
 # """
 struct Greater <: GreenFunctionType end
 
+"""
+    GreenFunction
 
-struct GreenFunction{T, S<: AbstractArray{<:T}, U}
+  A 2-time Green function with array indexing operations respecting the 
+symmetries of the Green function.
+"""
+struct GreenFunction{T,S<:AbstractArray{<:T},U}
   data::S
 
-  function GreenFunction{T,S,U}(data) where {T, S<:AbstractArray{<:T}, U}
-    @assert ndims(data) == 2 || ndims(data) == 4
-    new{T,S,U}(recursivecopy(data))
+  function GreenFunction{T,S,U}(A) where {T,S<:AbstractArray{<:T},U<:GreenFunctionType}
+    @assert ndims(A) == 2 || ndims(A) == 4
+    new{T,S,U}(A)
   end
 end
+
+GF_type(::Type{S}, U) where {T<:Number,S<:AbstractArray{T}} = GreenFunction{T,S,U}
+GF_type(::Type{S}, U) where {T<:AbstractArray,S<:AbstractArray{T}} = GreenFunction{AbstractArray,S,U}
 
 function GreenFunction(A::AbstractArray, U::Type{<:GreenFunctionType})
   LinearAlgebra.checksquare(A)
   return GF_type(typeof(A), U)(A)
 end
 
-function GF_type(::Type{T}, U) where {S<:Number, T<:AbstractArray{S}}
-  GreenFunction{S, T, U}
-end
-
-function GF_type(::Type{T}, U) where {S<:AbstractArray, T<:AbstractArray{S}}
-  return GreenFunction{AbstractArray, T, U}
-end
-
-Base.copy(A::GreenFunction) = typeof(A)(recursivecopy(A.data))
 Base.convert(T::Type{<:GreenFunction}, m::AbstractArray) = T(m)
-Base.eltype(::GreenFunction{T,S,U}) where {T,S,U} = eltype(S)
-
+Base.copy(A::GreenFunction) = typeof(A)(copy(A.data))
+Base.eltype(::GreenFunction{T,S,U}) where {T,S,U} = eltype(T)
 Base.size(A::GreenFunction) = size(A.data)
-# Base.length(A::GreenFunction) = length(A.data)
-# Base.firstindex(A::GreenFunction) = firstindex(A.data)
-# Base.lastindex(A::GreenFunction) = lastindex(A.data)
-
 Base.getindex(A::GreenFunction, I::Int64) = error("Single indexing not allowed")
-Base.getindex(A::GreenFunction, F::Vararg{Union{Int64, Colon}, 2}) = Base.getindex(A.data, F..., ..)
-Base.getindex(A::GreenFunction, I...) = Base.getindex(A.data, I...)
 
-Base.setindex!(A::GreenFunction, I::Int64) = error("Single indexing not allowed")
-Base.setindex!(A::GreenFunction, v, F::Vararg{Union{Int64, Colon}, 2}) = __setindex!(A, v, F, ..)
-Base.setindex!(A::GreenFunction, v, I...) = __setindex!(A, v, front2_last(I)...)
+@inline Base.getindex(A::GreenFunction, I::Vararg{Union{Int64,Colon},2}) = Base.getindex(A.data, I..., ..)
+@inline Base.getindex(A::GreenFunction, I...) = Base.getindex(A.data, I...)
 
+@inline Base.setindex!(A::GreenFunction, v, I::Int64) = error("Single indexing not supported")
+@inline Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, F::Vararg{Union{Int64, Colon}, 2}) where {T,S,F1,F2} = __setindex!(A, v, F, ..)
+@inline Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, I...) where {T,S,F1,F2} = __setindex!(A, v, front2_last(I)...)
 @inline function __setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, F::Tuple{F1,F2}, I...) where {T,S,F1,F2}
   if ==(F...)
     setindex!(A.data, v, F..., I...)
   else 
     setindex!(A.data, v, F..., I...)
-    setindex!(A.data, -adjoint(v), reverse(F)..., I...) # MEMORY BOTTLENECK
+    setindex!(A.data, -adjoint(v), reverse(F)..., I...)
   end
 end
 
@@ -104,22 +99,6 @@ function Base.show(io::IO, x::GreenFunction)
   end
 end
 
-function symmetrize!(A::GreenFunction{I,S,U}) where {I,S,U}
-  T, T′ = first2(size(A))
-  if U === Lesser
-    for t′ in 1:1:T′, t in 1:1:t′
-      A[t,t′] = A[t,t′]
-    end
-  elseif U === Greater
-    for t in 1:1:T, t′ in 1:1:t
-      A[t,t′] = A[t,t′]
-    end
-  else
-    error("Type not supported")
-  end
-  A
-end
-
 function resize(A::GreenFunction, t::Vararg{Int,2})
   if eltype(A) <: AbstractArray
     newdata = fill(eltype(A)(undef,t...,size(first(A))...))
@@ -129,11 +108,51 @@ function resize(A::GreenFunction, t::Vararg{Int,2})
 
   T, T′ = min.(first2(size(A)), t)
 
-  for t in 1:1:T
-    for t′ in 1:1:T′
-      @views newdata[t,t′] = A[t,t′]
-    end
+  for t=1:T, t′=1:T′
+    @views newdata[t,t′] = A[t,t′]
   end
 
   return newdata
+end
+
+"""
+    UnstructuredGreenFunction
+
+  This 2-time GreenFunction stores its data in a lower-triangular matrix
+configuration. This allows for a flexible resizing of the time-dimension, but 
+array indexing might be slower due to the data not being aligned.
+"""
+struct UnstructuredGreenFunction{T,N,U} <: AbstractArray{T,N}
+  data::Vector{Vector{T}}
+  
+  function UnstructuredGreenFunction(a::T, U::GreenFunctionType) where T<:Union{Number,AbstractArray}
+    new{T,2+ndims(a),U}([[a]])
+  end
+end
+
+
+function Base.getindex(a::UnstructuredGreenFunction{T,N,U}, i::Int, j::Int) where {T,N,U<:Union{Greater,Lesser}}
+  return (i >= j) ? a.data[i-j+1][j] : -adjoint(a.data[j-i+1][i])
+end
+
+function Base.setindex!(a::UnstructuredGreenFunction{T,N,U}, v, i::Int, j::Int) where {T,N,U<:Union{Greater,Lesser}}
+  if i >= j
+    Base.setindex!(a.data[i-j+1],v,j)
+  else
+    Base.setindex!(a.data[j-i+1],-adjoint(v),i)
+  end
+end
+
+@inline Base.size(a::UnstructuredGreenFunction) = (length(a.data), length(first(a.data)), size(first(first(a.data)))...)
+
+function Base.resize!(a::UnstructuredGreenFunction, i::Int, j::Int)
+  col = size(a, 2)
+  
+  resize!(a.data, j)
+  for k in 1:min(col, j)
+    resize!(a.data[k], i-k+1)
+  end
+  for k in min(col,j)+1:i
+    a.data[k] = Array{eltype(a)}(undef, i-k+1)
+  end
 end
