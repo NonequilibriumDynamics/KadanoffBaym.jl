@@ -57,7 +57,7 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; dt=nothing, adaptive=true,
     T = length(state.t) # current time index
 
     # Step vertically
-    for (tⱼ, cache) in enumerate(caches.line)
+    for (tⱼ, cache) in enumerate(caches.vert)
       predict_correct!(inplace!(f_vert,T,tⱼ), state, cache, max_order, 
         atol, rtol, false; update=uⱼ->(state.u[T,tⱼ,:] = uⱼ))
     end
@@ -84,12 +84,12 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; dt=nothing, adaptive=true,
 end
 
 function update_caches!(caches, state::VCABMState, f_vert, max_k)
-  @assert length(caches.line)+1 == length(state.t)
+  @assert length(caches.vert)+1 == length(state.t)
 
   T = length(state.t)
   local_max_k = caches.diag.k
 
-  for (tⱼ, cache) in enumerate(caches.line)
+  for (tⱼ, cache) in enumerate(caches.vert)
     cache.u_prev = state.u[T,tⱼ,:] # u_next was saved in state.u by update
     cache.f_prev = f_vert(state.u,state.t,T,tⱼ)
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
@@ -99,17 +99,17 @@ function update_caches!(caches, state::VCABMState, f_vert, max_k)
   begin # Add a new cache!
     u₀ = state.u[T,T,:]
     f₀ = f_vert(state.u,state.t,T,T)
-    push!(caches.line, VCABMCache{eltype(state.t)}(max_k, u₀, f₀))
+    push!(caches.vert, VCABMCache{eltype(state.t)}(max_k, u₀, f₀))
   end
 
-  @assert length(caches.line) == length(state.t)
+  @assert length(caches.vert) == length(state.t)
 end
 
 mutable struct KBCaches{T,F}
-  line::Vector{VCABMCache{T,F}}
+  vert::Vector{VCABMCache{T,F}}
   diag::VCABMCache{T,F}
 
-  function KBCaches(line1::VCABMCache{T,F}, diag::VCABMCache{T,F}) where {T,F}
-    new{T,F}([line1,], diag)
+  function KBCaches(vert1::VCABMCache{T,F}, diag::VCABMCache{T,F}) where {T,F}
+    new{T,F}([vert1,], diag)
   end
 end
