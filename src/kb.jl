@@ -29,7 +29,7 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; dt=nothing, adaptive=true,
   end
 
   # Resize solution
-  u = VectorOfArray(map(x->resize(x,50,50), u.u));
+  resize!.(u.u, 50, 50)
 
   # Initialize state, caches and determine dt
   state, caches = begin
@@ -45,7 +45,7 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; dt=nothing, adaptive=true,
       dt = initial_step(f′,u₀,t₀,1,rtol,atol;f₀=f₀_vert)
     end
 
-    VCABMState(u,[t₀],dt), KBCaches(cache_vert, cache_diag)    
+    VCABMState(u,t₀,dt), KBCaches(cache_vert, cache_diag)    
   end
 
   # Modify user functions to always refer to the `state` variables `u` and `t`
@@ -54,14 +54,7 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; dt=nothing, adaptive=true,
 
   # Time-step
   @do_while timeloop!(state,caches.diag,tmax,max_dt,adaptive,qmax,qmin,γ) begin
-    push!(state.t, state.t[end] + state.dt) # add t_next
-    T = length(state.t)
-    
-    # Resize solution
-    if size(state.u,1) < length(state.t)
-      size_hint = size(state.u,1) + min(max(ceil(Int,(tmax-state.t[end])/state.dt),5),50)
-      state.u = VectorOfArray(map(x->resize(x,size_hint,size_hint), state.u.u))
-    end
+    T = length(state.t) # current time index
 
     # Step vertically
     for (tⱼ, cache) in enumerate(caches.line)
@@ -76,13 +69,17 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; dt=nothing, adaptive=true,
     # Accept step
     if caches.diag.error_k <= one(caches.diag.error_k)
       update_caches!(caches, state, f_vert, max_order)
-    else
-      pop!(state.t) # remove t_next
+    end
+
+    # Resize solution
+    if size(state.u,1) == length(state.t)
+      size_hint = size(state.u,1) + min(max(ceil(Int,(tmax-state.t[end])/state.dt),5),50)
+      resize!.(state.u.u,size_hint,size_hint)
     end
   end
 
-  # Resize solution
-  state.u = VectorOfArray(map(x->resize(x,length(state.t),length(state.t)),state.u.u))
+  # Trim solution
+  resize!.(state.u.u, length(state.t), length(state.t))
   return state.u, state.t
 end
 

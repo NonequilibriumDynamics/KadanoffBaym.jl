@@ -26,15 +26,11 @@ function vcabm(f, u₀, t₀, tmax; dt=nothing, adaptive=true, max_dt=1e-1,
   state, cache = initialize(f, u₀, t₀, dt, max_order, atol, rtol)
 
   @do_while timeloop!(state,cache,tmax,max_dt,adaptive,qmax,qmin,γ) begin
-    push!(state.t, state.t[end] + state.dt)
-
     predict_correct!(f, state, cache, max_order, atol, rtol, adaptive)
 
     # update state
     if cache.error_k <= one(cache.error_k)
       push!(state.u, cache.u_prev)
-    else
-      pop!(state.t)
     end
   end
 
@@ -45,6 +41,10 @@ function timeloop!(state,cache,tmax,max_dt,adaptive,qmax,qmin,γ)
   @unpack k, error_k= cache
 
   if adaptive
+    if cache.error_k > one(cache.error_k)
+      pop!(state.t) # remove t_prev
+    end
+
     # II.4 Automatic Step Size Control, Eq. (4.13)
     q = max(inv(qmax), min(inv(qmin), error_k^(1/(k+1)) / γ))
     state.dt = min(state.dt / q, max_dt)
@@ -55,6 +55,8 @@ function timeloop!(state,cache,tmax,max_dt,adaptive,qmax,qmin,γ)
     end
   end
 
+  push!(state.t, state.t[end] + state.dt) # add t_next
+
   return state.t[end] < tmax
 end
 
@@ -64,8 +66,8 @@ mutable struct VCABMState{T,U}
   t::Vector{T}
   dt::T
 
-  function VCABMState(u::U, t::Vector{T}, dt::T) where {T,U}
-    new{T,U}(u,t,dt)
+  function VCABMState(u::U, t₀::T, dt::T) where {T,U}
+    new{T,U}(u,[t₀,t₀+dt],dt)
   end
 end
 
@@ -98,13 +100,13 @@ function initialize(f, u₀, t₀, dt₀, max_k, atol, rtol)
     dt₀ = initial_step(f, u₀, t₀, 1, rtol, atol; f₀=f₀)
   end
 
-  return VCABMState([u₀,],[t₀],dt₀), VCABMCache{typeof(t₀)}(max_k,u₀,f₀)
+  return VCABMState([u₀,],t₀,dt₀), VCABMCache{typeof(t₀)}(max_k,u₀,f₀)
 end
 
 # Solving Ordinary Differential Equations I: Nonstiff Problems, by Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
 function predict_correct!(f, state, cache, max_k, atol, rtol, adaptive; update=nothing)
   @inbounds begin
-    @unpack t,dt,u = state
+    @unpack t,dt = state
     @unpack u_prev,g,ϕ_np1,ϕstar_n,k = cache
 
     t_next = t[end]
