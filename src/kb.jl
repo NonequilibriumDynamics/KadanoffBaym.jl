@@ -68,7 +68,7 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; dt=nothing, adaptive=true,
     # Step vertically
     for (tⱼ, cache) in enumerate(caches.vert)
       predict_correct!(inplace!(f_vert,T,tⱼ), state, cache, max_order, 
-        atol, rtol, true)#; update=uⱼ->(state.u[T,tⱼ,:] = uⱼ))
+        atol, rtol, false; update=uⱼ->foreach(i->state.u[i][T,tⱼ,..]=uⱼ[i],1:length(uⱼ)))
     end
 
     # Step diagonally and control step
@@ -96,14 +96,14 @@ function update_caches!(caches, state::VCABMState, f_vert, max_k)
   @assert length(caches.vert)+1 == length(state.t)
 
   T = length(state.t)
-  # local_max_k = caches.diag.k
+  local_max_k = caches.diag.k
 
-  # for (tⱼ, cache) in enumerate(caches.vert)
-  #   cache.u_prev = state.u[T,tⱼ,:] # u_next was saved in state.u by update
-  #   cache.f_prev = f_vert(state.u,state.t,T,tⱼ)
-  #   cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-  #   cache.k = min(local_max_k, cache.k+1) # Ramp up order
-  # end
+  for (tⱼ, cache) in enumerate(caches.vert)
+    cache.u_prev = [x[T,tⱼ,..] for x in state.u] # u_next was saved in state.u by update
+    cache.f_prev = f_vert(state.u,state.t,T,tⱼ)
+    cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
+    cache.k = min(local_max_k, cache.k+1) # Ramp up order
+  end
 
   begin # Add a new cache!
     u₀ = [x[T,T,..] for x in state.u]
