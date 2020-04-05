@@ -71,24 +71,24 @@ mutable struct VCABMState{T,U}
   end
 end
 
-mutable struct VCABMCache{T,F,U}
+mutable struct VCABMCache{T,U}
   u_prev::U
-  f_prev::F
-  ϕ_n::Vector{F}
-  ϕ_np1::Vector{F}
-  ϕstar_n::Vector{F}
-  ϕstar_nm1::Vector{F}
+  f_prev::U
+  ϕ_n::Vector{U}
+  ϕ_np1::Vector{U}
+  ϕstar_n::Vector{U}
+  ϕstar_nm1::Vector{U}
   c::Matrix{T}
   g::Vector{T}
   k::Int # order
   error_k::T
 
-  function VCABMCache{T}(max_k, u_prev::U, f_prev::F) where {T,F,U} # k = 1
-    ϕ_n = Vector{F}(undef, max_k+1); ϕ_n[1] = copy(f_prev)
-    ϕstar_nm = Vector{F}(undef, max_k+1); ϕstar_nm[1] = copy(f_prev)
-    ϕstar_n = Vector{F}(undef, max_k+1); ϕstar_n[1] = copy(f_prev)
-    ϕ_np = Vector{F}(undef, max_k+2)
-    new{T,F,U}(u_prev,f_prev,ϕ_n,ϕ_np,ϕstar_n,ϕstar_nm,zeros(T,max_k+1,max_k+1),zeros(T,max_k+1),1,zero(T))
+  function VCABMCache{T}(max_k, u_prev::U, f_prev) where {T,U} # k = 1
+    ϕ_n = Vector{U}(undef, max_k+1); ϕ_n[1] = copy(f_prev)
+    ϕstar_nm = Vector{U}(undef, max_k+1); ϕstar_nm[1] = copy(f_prev)
+    ϕstar_n = Vector{U}(undef, max_k+1); ϕstar_n[1] = copy(f_prev)
+    ϕ_np = Vector{U}(undef, max_k+2)
+    new{T,U}(u_prev,f_prev,ϕ_n,ϕ_np,ϕstar_n,ϕstar_nm,zeros(T,max_k+1,max_k+1),zeros(T,max_k+1),1,zero(T))
   end
 end
 
@@ -234,6 +234,7 @@ end
 @inline function error_estimate(ũ::Number, u₀::Number, u₁::Number, atol::Real, rtol::Real)
   ũ / (atol + max(norm(u₀), norm(u₁)) * rtol)
 end
-@inline norm(u::Union{AbstractFloat,Complex}) = abs(u)
+# @inline norm(u::Union{AbstractFloat,Complex}) = abs(u)
 # @inline norm(u::Array{T}) where T<:Union{AbstractFloat,Complex} = sqrt(sum(abs2,u) / length(u))
-@inline norm(u::Array) = sqrt(sum(abs2,u) / length(u))
+# @inline norm(u::Array) = sqrt(sum(abs2,u) / length(u))
+@inline norm(u) = LinearAlgebra.norm(u) / sqrt(length(u))
