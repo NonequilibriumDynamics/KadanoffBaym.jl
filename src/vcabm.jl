@@ -55,9 +55,12 @@ function timeloop!(state,cache,tmax,max_dt,adaptive,qmax,qmin,γ)
     end
   end
 
-  push!(state.t, state.t[end] + state.dt) # add t_next
-
-  return state.t[end] < tmax
+  if state.t[end] < tmax
+    push!(state.t, state.t[end] + state.dt) # add t_next
+    return true
+  else
+    return false
+  end 
 end
 
 # Holds the information about the integration
