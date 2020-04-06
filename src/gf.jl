@@ -18,7 +18,7 @@ struct Greater <: GreenFunctionType end
   A 2-time Green function with array indexing operations respecting the 
 symmetries of the Green function.
 """
-struct GreenFunction{T,S<:AbstractArray{<:T},U}
+mutable struct GreenFunction{T,S<:AbstractArray{<:T},U}
   data::S
 
   function GreenFunction{T,S,U}(A) where {T,S<:AbstractArray{<:T},U<:GreenFunctionType}
@@ -35,11 +35,13 @@ function GreenFunction(A::AbstractArray, U::Type{<:GreenFunctionType})
   return GF_type(typeof(A), U)(A)
 end
 
-Base.convert(T::Type{<:GreenFunction}, m::AbstractArray) = T(m)
 Base.copy(A::GreenFunction) = typeof(A)(copy(A.data))
 Base.eltype(::GreenFunction{T,S,U}) where {T,S,U} = eltype(T)
-Base.size(A::GreenFunction) = size(A.data)
+Base.size(A::GreenFunction,I...) = size(A.data,I...)
 Base.getindex(A::GreenFunction, I::Int64) = error("Single indexing not allowed")
+# @inline Base.length(A::GreenFunction) = length(A.data)
+# @inline Base.ndims(A::GreenFunction{T,S,U}) where {T,S,U} = ndims(S)
+# @inline Base.axes(A::GreenFunction, d) = axes(A.data, d)
 
 @inline Base.getindex(A::GreenFunction, I::Vararg{Union{Int64,Colon},2}) = Base.getindex(A.data, I..., ..)
 @inline Base.getindex(A::GreenFunction, I...) = Base.getindex(A.data, I...)
@@ -57,8 +59,8 @@ Base.getindex(A::GreenFunction, I::Int64) = error("Single indexing not allowed")
 end
 
 # NOTE: This is absolutely fundamental to make sure that getelement of VectorOfArray returns non-eltype-Any arrays
-RecursiveArrayTools.VectorOfArray(vec::AbstractVector{GreenFunction}, dims::NTuple{N}) where {N} = error("eltype of the GreenFunctions must be the same")
-RecursiveArrayTools.VectorOfArray(vec::AbstractVector{GreenFunction{T,S}}, dims::NTuple{N}) where {T, S, N} = VectorOfArray{T, N, typeof(vec)}(vec)
+# RecursiveArrayTools.VectorOfArray(vec::AbstractVector{GreenFunction}, dims::NTuple{N}) where {N} = error("eltype of the GreenFunctions must be the same")
+# RecursiveArrayTools.VectorOfArray(vec::AbstractVector{GreenFunction{T,S}}, dims::NTuple{N}) where {T, S, N} = VectorOfArray{T, N, typeof(vec)}(vec)
 
 for g in (:GreenFunction, )
   for f in (:-, :conj, :real, :imag, :adjoint, :transpose, :inv)
@@ -99,7 +101,8 @@ function Base.show(io::IO, x::GreenFunction)
   end
 end
 
-function resize(A::GreenFunction, t::Vararg{Int,2})
+Base.resize!(A::GreenFunction, t::Int) = Base.resize!(A, t, t)
+function Base.resize!(A::GreenFunction, t::Vararg{Int,2})
   if eltype(A) <: AbstractArray
     newdata = fill(eltype(A)(undef,t...,size(first(A))...))
   else
@@ -112,7 +115,8 @@ function resize(A::GreenFunction, t::Vararg{Int,2})
     @views newdata[t,t′] = A[t,t′]
   end
 
-  return newdata
+  A.data = newdata.data
+  return A
 end
 
 """
@@ -125,7 +129,7 @@ array indexing might be slower due to the data not being aligned.
 struct UnstructuredGreenFunction{T,N,U} <: AbstractArray{T,N}
   data::Vector{Vector{T}}
   
-  function UnstructuredGreenFunction(a::T, U::GreenFunctionType) where T<:Union{Number,AbstractArray}
+  function UnstructuredGreenFunction(a::T, U::Type{<:GreenFunctionType}) where {T<:Union{Number,AbstractArray}}
     new{T,2+ndims(a),U}([[a]])
   end
 end

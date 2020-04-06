@@ -1,8 +1,5 @@
-using Test
-using BenchmarkTools
-
-include("../src/KadanoffBaym.jl")
-using .KadanoffBaym
+using Test, BenchmarkTools
+using KadanoffBaym
 
 N = 10
 
