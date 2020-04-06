@@ -237,7 +237,4 @@ end
 @inline function error_estimate(ũ::Number, u₀::Number, u₁::Number, atol::Real, rtol::Real)
   ũ / (atol + max(norm(u₀), norm(u₁)) * rtol)
 end
-# @inline norm(u::Union{AbstractFloat,Complex}) = abs(u)
-# @inline norm(u::Array{T}) where T<:Union{AbstractFloat,Complex} = sqrt(sum(abs2,u) / length(u))
-# @inline norm(u::Array) = sqrt(sum(abs2,u) / length(u))
 @inline norm(u) = LinearAlgebra.norm(u) / sqrt(length(u))
