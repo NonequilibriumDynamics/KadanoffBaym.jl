@@ -1,9 +1,9 @@
 # Trapezoidal integration rule
-function trapz(x::Vector, y::Vector)
+function trapz(x, y)
   n = length(x)
-  @assert n == length(y) 
+  # @assert n == length(y) 
 
-  r = zero(promote_type(eltype(y), eltype(x)))
+  r = zero(first(y)) # NOTE: not type-stable
   
   if n == 1; return r; end
   
@@ -16,7 +16,7 @@ end
 
 # Trapezoidal integration rule
 function trapz(x::Vector, y::Vector, i::Int, j::Int)
-  r = zero(promote_type(eltype(y), eltype(x)))
+  r = zero(first(y)) # NOTE: not type-stable
   
   if i == j; return r; end
   

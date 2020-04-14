@@ -164,6 +164,30 @@ function predict_correct!(f, state, cache, max_k, atol, rtol, adaptive; update=n
   end
 end
 
+function predict!(state, cache)
+  @inbounds begin
+    @unpack u_prev,g,ϕstar_n,k = cache
+
+    # Explicit Adams: Section III.5 Eq. (5.7)
+    ϕ_and_ϕstar!(state, cache, k+1)
+    u_next = muladd(g[1], ϕstar_n[1], u_prev)
+    for i = 2:k-1
+      u_next = muladd(g[i], ϕstar_n[i], u_next)
+    end
+    u_next
+  end
+end
+
+function correct!(u_next, du_np1, cache)
+  @inbounds begin
+    @unpack g,ϕ_np1,k = cache
+
+    # Implicit corrector
+    ϕ_np1!(cache, du_np1, k+1)
+    u_next = muladd(g[k], ϕ_np1[k], u_next)
+  end
+end
+
 # Section III.5: Eq (5.9-5.10)
 function ϕ_and_ϕstar!(state, cache, k)
   @inbounds begin

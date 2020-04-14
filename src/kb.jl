@@ -68,44 +68,33 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; f_line=nothing, dt=nothing, adap
 
   # Modify user functions to mutate the `state` variable `u` and refer to `t`
   # This is necessary because internally `f` is a function of `uᵢ` and `tᵢ`
-  f_vert!(tᵢ,tⱼ) = (u′,_) -> begin
-    foreach(i->state.u[1][i][tᵢ,tⱼ,..]=u′[i], eachindex(u′))
-    f_vert(state.u...,state.t,tᵢ,tⱼ)
-  end
   f_diag!(tᵢ) = (u′,_) -> begin
     foreach(i->state.u[1][i][tᵢ,tᵢ,..]=u′[i], eachindex(u′))
     f_diag(state.u...,state.t,tᵢ)
-  end
-  f_line!(tᵢ) = (u′,_) -> begin
-    foreach(i->state.u[2][i][tᵢ,..]=u′[i], eachindex(u′))
-    f_line(state.u...,state.t,tᵢ)
   end
 
   # Time-step
   @do_while timeloop!(state,caches.diag,tmax,max_dt,adaptive,qmax,qmin,γ) begin
     T = length(state.t) # current time index
 
-    # This is something necessary to have the mixed functions available
+    # Step vertically
     if !isnothing(f_line)
-      cache = caches.line
-      ϕ_and_ϕstar!(state, cache, cache.k+1)
-      u_next = muladd(cache.g[1], cache.ϕstar_n[1], cache.u_prev)
-      for i = 2:cache.k-1
-        u_next = muladd(cache.g[i], cache.ϕstar_n[i], u_next)
-      end
+      u_next = predict!(state, caches.line)
       foreach(i->state.u[2][i][T,..]=u_next[i], eachindex(u_next))
     end
-
-    # Step vertically
     for (tⱼ, cache) in enumerate(caches.vert)
-      predict_correct!(f_vert!(T,tⱼ),state,cache,max_order,atol,rtol,false; 
-        update=uⱼ->foreach(i->state.u[1][i][T,tⱼ,..]=uⱼ[i], eachindex(uⱼ)))
+      u_next = predict!(state, cache)
+      foreach(i->state.u[1][i][T,tⱼ,..]=u_next[i], eachindex(u_next))
     end
-
-    # Step mixed functions
     if !isnothing(f_line)
-      predict_correct!(f_line!(T),state,caches.line,max_order,atol,rtol,false; 
-        update=uⱼ->foreach(i->state.u[2][i][T,..]=uⱼ[i], eachindex(uⱼ)))
+      u_next = [x[T,..] for x in state.u[2]]
+      u_next = correct!(u_next, f_line(state.u...,state.t,T), caches.line)
+      foreach(i->state.u[2][i][T,..]=u_next[i], eachindex(u_next))
+    end
+    for (tⱼ, cache) in enumerate(caches.vert)
+      u_next = [x[T,tⱼ,..] for x in state.u[1]]
+      u_next = correct!(u_next, f_vert(state.u...,state.t,T,tⱼ), cache)
+      foreach(i->state.u[1][i][T,tⱼ,..]=u_next[i], eachindex(u_next))
     end
 
     # Step diagonally and control step
