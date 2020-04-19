@@ -7,11 +7,11 @@ Solves the 2-time Voltera integral differential equations
 
 The signature of `f_vert` and `f_diag` must be of the form
   f_vert(u, t_grid, t1, t2)
-  f_diag(u, t_grid, t)
+  f_diag(u, t_grid, t1)
 And if mixed functions are present
-  f_vert(u, u_line, t_grid, t1, t2)
-  f_diag(u, u_line, t_grid, t)
-  f_line(u, u_line, t_grid, t)
+  f_vert(u, v, t_grid, t1, t2)
+  f_diag(u, v, t_grid, t1)
+  f_line(u, v, t_grid, t1)
 
 The initial condition `u` should be an array or tuple of `uᵢⱼ`s and
 if mixed functions `vᵢ` are present, should be of the form (`uᵢⱼ`, `vᵢ`).
@@ -40,24 +40,24 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; f_line=nothing, dt=nothing, adap
 
   # Initialize state and caches
   state, caches = begin
-    u₀ = [x[1,1,..] for x in u[1]] # Extract solution at (t₀,t₀)
-    cache_vert = VCABMCache{typeof(t₀)}(max_order,u₀,f_vert(u...,[t₀],1,1))
-    cache_diag = VCABMCache{typeof(t₀)}(max_order,u₀,f_diag(u...,[t₀],1))
+    # Resize solutions
+    foreach(u′->resize!.(u′, 50), u)
 
     if isnothing(f_line)
       cache_line = nothing
     else
-      u₀ = [x[1,..] for x in u[2]] # Extract solution at (t₀)
+      u₀ = [x[1] for x in u[2]] # Extract solution at (t₀)
       cache_line = VCABMCache{typeof(t₀)}(max_order,u₀,f_line(u...,[t₀],1))
     end
 
-    # Resize solutions
-    foreach(u′->resize!.(u′, 50), u)
+    u₀ = [x[1,1] for x in u[1]] # Extract solution at (t₀,t₀)
+    cache_vert = VCABMCache{typeof(t₀)}(max_order,u₀,f_vert(u...,[t₀],1,1))
+    cache_diag = VCABMCache{typeof(t₀)}(max_order,u₀,f_diag(u...,[t₀],1))
 
     # Calculate initial dt
     if dt===nothing
       f′ = (u′,t′) -> begin
-        foreach(i->u[1][i][2,1,..]=u′[i],eachindex(u′))
+        foreach(i->u[1][i][2,1]=u′[i],eachindex(u′))
         f_vert(u...,[t₀,t′],2,1)
       end
       dt = initial_step(f′,u₀,t₀,1,rtol,atol;f₀=cache_vert.f_prev)
@@ -69,7 +69,7 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; f_line=nothing, dt=nothing, adap
   # Modify user functions to mutate the `state` variable `u` and refer to `t`
   # This is necessary because internally `f` is a function of `uᵢ` and `tᵢ`
   f_diag!(tᵢ) = (u′,_) -> begin
-    foreach(i->state.u[1][i][tᵢ,tᵢ,..]=u′[i], eachindex(u′))
+    foreach(i->state.u[1][i][tᵢ,tᵢ]=u′[i], eachindex(u′))
     f_diag(state.u...,state.t,tᵢ)
   end
 
@@ -80,21 +80,21 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; f_line=nothing, dt=nothing, adap
     # Step vertically
     if !isnothing(f_line)
       u_next = predict!(state, caches.line)
-      foreach(i->state.u[2][i][T,..]=u_next[i], eachindex(u_next))
+      foreach(i->state.u[2][i][T]=u_next[i], eachindex(u_next))
     end
     for (tⱼ, cache) in enumerate(caches.vert)
       u_next = predict!(state, cache)
-      foreach(i->state.u[1][i][T,tⱼ,..]=u_next[i], eachindex(u_next))
+      foreach(i->state.u[1][i][T,tⱼ]=u_next[i], eachindex(u_next))
     end
     if !isnothing(f_line)
-      u_next = [x[T,..] for x in state.u[2]]
+      u_next = [x[T] for x in state.u[2]]
       u_next = correct!(u_next, f_line(state.u...,state.t,T), caches.line)
-      foreach(i->state.u[2][i][T,..]=u_next[i], eachindex(u_next))
+      foreach(i->state.u[2][i][T]=u_next[i], eachindex(u_next))
     end
     for (tⱼ, cache) in enumerate(caches.vert)
-      u_next = [x[T,tⱼ,..] for x in state.u[1]]
+      u_next = [x[T,tⱼ] for x in state.u[1]]
       u_next = correct!(u_next, f_vert(state.u...,state.t,T,tⱼ), cache)
-      foreach(i->state.u[1][i][T,tⱼ,..]=u_next[i], eachindex(u_next))
+      foreach(i->state.u[1][i][T,tⱼ]=u_next[i], eachindex(u_next))
     end
 
     # Step diagonally and control step
@@ -126,7 +126,7 @@ function update_caches!(caches, state::VCABMState, f_vert, f_line, max_k)
 
   # Update all vertical caches (does the remaining steps of predict_correct!)
   for (tⱼ, cache) in enumerate(caches.vert)
-    cache.u_prev = [x[T,tⱼ,..] for x in state.u[1]] # u_next was saved in state.u by update
+    cache.u_prev = [x[T,tⱼ] for x in state.u[1]] # u_next was saved in state.u by update
     cache.f_prev = f_vert(state.u...,state.t,T,tⱼ)
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
     cache.k = min(local_max_k, cache.k+1) # Ramp up order
@@ -135,7 +135,7 @@ function update_caches!(caches, state::VCABMState, f_vert, f_line, max_k)
   # Update the mixed cache (does the remaining steps of predict_correct!)
   if !isnothing(f_line)
     cache = caches.line
-    cache.u_prev = [x[T,..] for x in state.u[2]] # u_next was saved in state.u by update
+    cache.u_prev = [x[T] for x in state.u[2]] # u_next was saved in state.u by update
     cache.f_prev = f_line(state.u...,state.t,T)
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
     cache.k = min(local_max_k, cache.k+1) # Ramp up order
@@ -143,7 +143,7 @@ function update_caches!(caches, state::VCABMState, f_vert, f_line, max_k)
 
   # Add a new cache for the next time line!
   begin
-    u₀ = [x[T,T,..] for x in state.u[1]]
+    u₀ = [x[T,T] for x in state.u[1]]
     f₀ = f_vert(state.u...,state.t,T,T)
     push!(caches.vert, VCABMCache{eltype(state.t)}(max_k, u₀, f₀))
   end

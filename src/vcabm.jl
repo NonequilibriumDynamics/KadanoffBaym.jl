@@ -107,7 +107,7 @@ function initialize(f, u₀, t₀, dt₀, max_k, atol, rtol)
 end
 
 # Solving Ordinary Differential Equations I: Nonstiff Problems, by Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
-function predict_correct!(f, state, cache, max_k, atol, rtol, adaptive; update=nothing)
+@muladd function predict_correct!(f, state, cache, max_k, atol, rtol, adaptive)
   @inbounds begin
     @unpack t,dt = state
     @unpack u_prev,g,ϕ_np1,ϕstar_n,k = cache
@@ -157,7 +157,6 @@ function predict_correct!(f, state, cache, max_k, atol, rtol, adaptive; update=n
         end
       end
     end # adaptive
-    (update !== nothing) && (update(u_next); return) # needed for KB-stepper
     cache.u_prev = u_next
     cache.f_prev = f_next
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
@@ -174,8 +173,8 @@ function predict!(state, cache)
     for i = 2:k-1
       u_next = muladd(g[i], ϕstar_n[i], u_next)
     end
-    u_next
   end
+  u_next
 end
 
 function correct!(u_next, du_np1, cache)
@@ -186,6 +185,7 @@ function correct!(u_next, du_np1, cache)
     ϕ_np1!(cache, du_np1, k+1)
     u_next = muladd(g[k], ϕ_np1[k], u_next)
   end
+  u_next
 end
 
 # Section III.5: Eq (5.9-5.10)
