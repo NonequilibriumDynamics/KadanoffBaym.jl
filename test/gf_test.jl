@@ -60,9 +60,9 @@ end
   @test gf.data == data
 
   # NOTE: using `..` for the first indices is not supported!
-  gf[:,:,1,1] = temp
-  data[:,:,1,1] = temp
-  @test gf.data == data
+  # gf[:,:,1,1] = temp
+  # data[:,:,1,1] = temp
+  # @test gf.data == data
 end
 
 @testset "setindex! benchmarks" begin
@@ -91,4 +91,8 @@ end
 
   @show @btime $setindexA($data)
   @show @btime $setindexG($gf)
+end
+
+@testset "broadcasting" begin
+
 end

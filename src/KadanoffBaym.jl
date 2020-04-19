@@ -1,5 +1,7 @@
 module KadanoffBaym
 
+using Base: @propagate_inbounds, front
+
 using LinearAlgebra
 using MuladdMacro
 using Parameters
@@ -14,7 +16,7 @@ include("utils.jl")
 export trapz
 
 include("gf.jl")
-export GreenFunction, Lesser, Greater
+export GreenFunction, Lesser, Greater, MixedLesser, MixedGreater
 
 # include("common.jl")
 # include("core.jl")

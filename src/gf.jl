@@ -12,6 +12,10 @@ struct Lesser <: GreenFunctionType end
 # """
 struct Greater <: GreenFunctionType end
 
+struct MixedLesser <: GreenFunctionType end
+
+struct MixedGreater <: GreenFunctionType end
+
 """
     GreenFunction
 
@@ -22,34 +26,57 @@ mutable struct GreenFunction{T,S<:AbstractArray{<:T},U}
   data::S
 
   function GreenFunction{T,S,U}(A) where {T,S<:AbstractArray{<:T},U<:GreenFunctionType}
-    @assert ndims(A) == 2 || ndims(A) == 4
+    # LinearAlgebra.checksquare(A) # @assert ndims(A) == 2 || ndims(A) == 4
     new{T,S,U}(A)
   end
 end
 
-GF_type(::Type{S}, U) where {T<:Number,S<:AbstractArray{T}} = GreenFunction{T,S,U}
-GF_type(::Type{S}, U) where {T<:AbstractArray,S<:AbstractArray{T}} = GreenFunction{AbstractArray,S,U}
-
 function GreenFunction(A::AbstractArray, U::Type{<:GreenFunctionType})
-  LinearAlgebra.checksquare(A)
-  return GF_type(typeof(A), U)(A)
+  GF_type(typeof(A), U)(A)
+end
+
+function GF_type(::Type{S}, U) where {T<:Number,S<:AbstractArray{T}}
+  GreenFunction{T,S,U}
+end
+
+function GF_type(::Type{S}, U) where {T<:AbstractArray,S<:AbstractArray{T}}
+  GreenFunction{AbstractArray,S,U}
 end
 
 Base.copy(A::GreenFunction) = typeof(A)(copy(A.data))
 Base.eltype(::GreenFunction{T,S,U}) where {T,S,U} = eltype(T)
-Base.size(A::GreenFunction,I...) = size(A.data,I...)
-Base.getindex(A::GreenFunction, I::Int64) = error("Single indexing not allowed")
-# @inline Base.length(A::GreenFunction) = length(A.data)
+
+@inline Base.size(A::GreenFunction,I...) = size(A.data,I...)
+@inline Base.length(A::GreenFunction) = length(A.data)
 # @inline Base.ndims(A::GreenFunction{T,S,U}) where {T,S,U} = ndims(S)
 # @inline Base.axes(A::GreenFunction, d) = axes(A.data, d)
 
-@inline Base.getindex(A::GreenFunction, I::Vararg{Union{Int64,Colon},2}) = Base.getindex(A.data, I..., ..)
-@inline Base.getindex(A::GreenFunction, I...) = Base.getindex(A.data, I...)
+const GreaterOrLesser{T,S} = GreenFunction{T,S,<:Union{Greater,Lesser}}
+const MixedGOL{T,S} = GreenFunction{T,S,<:Union{MixedGreater,MixedLesser}}
 
-@inline Base.setindex!(A::GreenFunction, v, I::Int64) = error("Single indexing not supported")
-@inline Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, F::Vararg{Union{Int64, Colon}, 2}) where {T,S,F1,F2} = __setindex!(A, v, F, ..)
-@inline Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, I...) where {T,S,F1,F2} = __setindex!(A, v, front2_last(I)...)
-@inline function __setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, F::Tuple{F1,F2}, I...) where {T,S,F1,F2}
+@inline function Base.getindex(A::GreaterOrLesser, I::Int64)
+  error("Single indexing not allowed")
+end
+@propagate_inbounds function Base.getindex(A::GreaterOrLesser, I::Vararg{Union{Int64,Colon},2})
+  Base.getindex(A.data, I..., ..)
+end
+@propagate_inbounds function Base.getindex(A::MixedGOL, I::Int64)
+  Base.getindex(A.data, .., I)
+end
+# @inline function Base.getindex(A::GreenFunction, I...)
+#   Base.getindex(A.data, I...)
+# end
+
+@propagate_inbounds function Base.setindex!(A::GreaterOrLesser, v, I::Int64)
+  error("Single indexing not supported")
+end
+@propagate_inbounds function Base.setindex!(A::GreaterOrLesser, v, F::Vararg{Union{Int64,Colon}, 2})
+  __setindex!(A, v, F, ..)
+end
+# @inline function Base.setindex!(A::GreaterOrLesser, v, I...)
+#   __setindex!(A, v, front2_last(I)...)
+# end
+@propagate_inbounds function __setindex!(A::GreaterOrLesser, v, F::Tuple{F1,F2}, I...) where {F1,F2}
   if ==(F...)
     setindex!(A.data, v, F..., I...)
   else 
@@ -57,19 +84,28 @@ Base.getindex(A::GreenFunction, I::Int64) = error("Single indexing not allowed")
     setindex!(A.data, -adjoint(v), reverse(F)..., I...)
   end
 end
+@propagate_inbounds function Base.setindex!(A::MixedGOL, v, I::Int64)
+  Base.setindex!(A.data, v, .., I)
+end
+# @inline function Base.setindex!(A::MixedGOL, v, I...)
+#   Base.setindex!(A.data, v, I...)
+# end
+
+# Disable broadcasting
+Base.dotview(A::GreenFunction, I...) = error("Not supported")
 
 # NOTE: This is absolutely fundamental to make sure that getelement of VectorOfArray returns non-eltype-Any arrays
 # RecursiveArrayTools.VectorOfArray(vec::AbstractVector{GreenFunction}, dims::NTuple{N}) where {N} = error("eltype of the GreenFunctions must be the same")
 # RecursiveArrayTools.VectorOfArray(vec::AbstractVector{GreenFunction{T,S}}, dims::NTuple{N}) where {T, S, N} = VectorOfArray{T, N, typeof(vec)}(vec)
 
 for g in (:GreenFunction, )
-  for f in (:-, :conj, :real, :imag, :adjoint, :transpose, :inv)
-      @eval (Base.$f)(A::$g{T,S,U}) where {T,S,U} = $g(Base.$f(A.data), U)
+  for f in (:-, :conj, :real, :imag, :adjoint, :transpose, :inv, :zero)
+    @eval (Base.$f)(A::$g{T,S,U}) where {T,S,U} = $g(Base.$f(A.data), U)
   end
 
   for f in (:+, :-, :/, :\, :*)
     if f != :/  
-        @eval (Base.$f)(A::Number, B::$g{T,S,U}) where {T,S,U} = $g(Base.$f(A, B.data), U)
+      @eval (Base.$f)(A::Number, B::$g{T,S,U}) where {T,S,U} = $g(Base.$f(A, B.data), U)
     end
     if f != :\
         @eval (Base.$f)(A::$g{T,S,U}, B::Number) where {T,S,U} = $g(Base.$f(A.data, B), U)
@@ -101,8 +137,8 @@ function Base.show(io::IO, x::GreenFunction)
   end
 end
 
-Base.resize!(A::GreenFunction, t::Int) = Base.resize!(A, t, t)
-function Base.resize!(A::GreenFunction, t::Vararg{Int,2})
+Base.resize!(A::GreaterOrLesser, t::Int) = Base.resize!(A, t, t)
+function Base.resize!(A::GreaterOrLesser, t::Vararg{Int,2})
   if eltype(A) <: AbstractArray
     newdata = fill(eltype(A)(undef,t...,size(first(A))...))
   else
@@ -118,6 +154,8 @@ function Base.resize!(A::GreenFunction, t::Vararg{Int,2})
   A.data = newdata.data
   return A
 end
+
+Base.resize!(A::MixedGOL, t::Int) = Base.resize!(A.data, front(size(A))..., t)
 
 """
     UnstructuredGreenFunction
