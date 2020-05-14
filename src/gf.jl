@@ -1,19 +1,27 @@
 abstract type GreenFunctionType end
 
-# """
-# Defined as
-#     G^<(t,t') = -i < a^{\dagger}(t') a(t) > for t <= t'
-# """
+"""
+Defined as
+    G^<(t,t') = -i < a^{\\dagger}(t') a(t) > for t ≺ t'
+"""
 struct Lesser <: GreenFunctionType end
 
-# """
-# Defined as
-#     G^>(t,t') = -i < a(t)a^{\dagger}(t')  > for t > t'
-# """
+"""
+Defined as
+    G^>(t,t') = -i < a(t)a^{\\dagger}(t')  > for t′ ≺ t
+"""
 struct Greater <: GreenFunctionType end
 
+"""
+Defined as
+    G^>(iτ,t') = -i < a(iτ)a^{\\dagger}(t')  > for t′ ≺ iτ
+"""
 struct MixedLesser <: GreenFunctionType end
 
+"""
+Defined as
+    G^<(t,iτ) = -i < a(t)a^{\\dagger}(iτ)  > for iτ ≺ t
+"""
 struct MixedGreater <: GreenFunctionType end
 
 """
@@ -54,28 +62,28 @@ Base.eltype(::GreenFunction{T,S,U}) where {T,S,U} = eltype(T)
 const GreaterOrLesser{T,S} = GreenFunction{T,S,<:Union{Greater,Lesser}}
 const MixedGOL{T,S} = GreenFunction{T,S,<:Union{MixedGreater,MixedLesser}}
 
-@inline function Base.getindex(A::GreaterOrLesser, I::Int64)
+@inline function Base.getindex(A::GreaterOrLesser, I::Union{Int64,Colon})
   error("Single indexing not allowed")
 end
 @propagate_inbounds function Base.getindex(A::GreaterOrLesser, I::Vararg{Union{Int64,Colon},2})
   Base.getindex(A.data, I..., ..)
 end
+@propagate_inbounds function Base.getindex(A::GreaterOrLesser, I...)
+  Base.getindex(A.data, I...)
+end
 @propagate_inbounds function Base.getindex(A::MixedGOL, I::Int64)
   Base.getindex(A.data, .., I)
 end
-# @inline function Base.getindex(A::GreenFunction, I...)
-#   Base.getindex(A.data, I...)
-# end
 
-@propagate_inbounds function Base.setindex!(A::GreaterOrLesser, v, I::Int64)
+@propagate_inbounds function Base.setindex!(A::GreaterOrLesser, v, I::Union{Int64,Colon})
   error("Single indexing not supported")
 end
 @propagate_inbounds function Base.setindex!(A::GreaterOrLesser, v, F::Vararg{Union{Int64,Colon}, 2})
   __setindex!(A, v, F, ..)
 end
-# @inline function Base.setindex!(A::GreaterOrLesser, v, I...)
-#   __setindex!(A, v, front2_last(I)...)
-# end
+@propagate_inbounds function Base.setindex!(A::GreaterOrLesser, v, I...)
+  __setindex!(A, v, front2_last(I)...)
+end
 @propagate_inbounds function __setindex!(A::GreaterOrLesser, v, F::Tuple{F1,F2}, I...) where {F1,F2}
   if ==(F...)
     setindex!(A.data, v, F..., I...)
