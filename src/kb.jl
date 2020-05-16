@@ -2,13 +2,13 @@
   Kadanoff-Baym adaptive timestepper
 
 Solves the 2-time Voltera integral differential equations
-  dy/dt1 = F[y](t1,t2)
-  dy/dt2 = G[y](t1,t2)
+  du/dt1 = F[u](t1,t2)
+  du/dt2 = G[u](t1,t2)
 
 The signature of `f_vert` and `f_diag` must be of the form
   f_vert(u, t_grid, t1, t2)
   f_diag(u, t_grid, t1)
-And if mixed functions are present
+And if mixed functions `v` are present
   f_vert(u, v, t_grid, t1, t2)
   f_diag(u, v, t_grid, t1)
   f_line(u, v, t_grid, t1)
@@ -17,11 +17,12 @@ The initial condition `u` should be an array or tuple of `uᵢⱼ`s and
 if mixed functions `vᵢ` are present, should be of the form (`uᵢⱼ`, `vᵢ`).
 
 It is also mandatory that both `u`s and can `v`s can be **indexed** by 2-time 
-and 1-time arguments, respectively, and can be resized! at will
+and 1-time arguments, respectively, and can be `resized!` at will
   uᵢⱼ = resize!(u, new_size)
-  vᵢ = resize(v, new_size)
+  vᵢ = resize!(v, new_size)
 
-The Kadanoff-Baym timestepper is based on the VCABM stepper presented in
+The Kadanoff-Baym timestepper is a 2-time generalization of the VCABM stepper 
+presented in
 Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
 Solving Ordinary Differential Equations I: Nonstiff Problems
 """
@@ -40,7 +41,7 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; f_line=nothing, dt=nothing, adap
 
   # Initialize state and caches
   state, caches = begin
-    # Resize solutions
+    # Resize time-length of the functions `u`
     foreach(u′->resize!.(u′, 50), u)
 
     if isnothing(f_line)
@@ -64,13 +65,6 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; f_line=nothing, dt=nothing, adap
     end
 
     VCABMState(u,t₀,dt), KBCaches(cache_vert,cache_diag,cache_line)    
-  end
-
-  # Modify user functions to mutate the `state` variable `u` and refer to `t`
-  # This is necessary because internally `f` is a function of `uᵢ` and `tᵢ`
-  f_diag!(tᵢ) = (u′,_) -> begin
-    foreach(i->state.u[1][i][tᵢ,tᵢ]=u′[i], eachindex(u′))
-    f_diag(state.u...,state.t,tᵢ)
   end
 
   # Time-step
@@ -98,7 +92,11 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; f_line=nothing, dt=nothing, adap
     end
 
     # Step diagonally and control step
-    predict_correct!(f_diag!(T),state,caches.diag,max_order,atol,rtol,true)
+    f_diag!(u′,_) = begin # internally `f` is a function of `uᵢ` and `tᵢ`
+      foreach(i->state.u[1][i][T,T]=u′[i], eachindex(u′))
+      f_diag(state.u...,state.t,T)
+    end
+    predict_correct!(f_diag!,state,caches.diag,max_order,atol,rtol,true)
 
     # Accept step
     if caches.diag.error_k <= one(caches.diag.error_k)
@@ -106,8 +104,8 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; f_line=nothing, dt=nothing, adap
     end
 
     # Resize solution
-    if (s = size(state.u[1][1],1)) == length(state.t)
-      s += min(max(ceil(Int,(tmax-state.t[end])/state.dt),5),50)
+    if (s = last(size(state.u[1][1]))) == length(state.t)
+      s += min(max(ceil(Int,(tmax-state.t[end])/state.dt),10),20)
       foreach(u′->resize!.(u′,s), state.u)
     end
   end # timeloop!

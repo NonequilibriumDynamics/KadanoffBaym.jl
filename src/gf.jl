@@ -27,19 +27,27 @@ struct MixedGreater <: GreenFunctionType end
 """
     GreenFunction
 
-  A 2-time Green function with array indexing operations respecting the 
+A 2-time Green function with array indexing operations respecting the 
 symmetries of the Green function.
-"""
-mutable struct GreenFunction{T,S<:AbstractArray{<:T},U}
-  data::S
 
-  function GreenFunction{T,S,U}(A) where {T,S<:AbstractArray{<:T},U<:GreenFunctionType}
-    # LinearAlgebra.checksquare(A) # @assert ndims(A) == 2 || ndims(A) == 4
-    new{T,S,U}(A)
-  end
+_Note_: The time-dimensions **must** be the last dimensions of the `data` 
+array. When indexing with just 2 indices, the time-arguments will be chosen.
+
+# Example
+```
+time_dim = 10
+spin_dim = 2
+gf = GreenFunction(zeros(spin_dim, spin_dim, time_dim, time_dim), Lesser)
+```
+"""
+mutable struct GreenFunction{T,S<:AbstractArray{<:T},U<:GreenFunctionType}
+  data::S
 end
 
 function GreenFunction(A::AbstractArray, U::Type{<:GreenFunctionType})
+  if U <: GreaterOrLesser
+    @assert ==(last2(size(A))...) "Time dimension ($(last2(size(A)))) must be a square"
+  end
   GF_type(typeof(A), U)(A)
 end
 
@@ -47,11 +55,11 @@ function GF_type(::Type{S}, U) where {T<:Number,S<:AbstractArray{T}}
   GreenFunction{T,S,U}
 end
 
-function GF_type(::Type{S}, U) where {T<:AbstractArray,S<:AbstractArray{T}}
-  GreenFunction{AbstractArray,S,U}
-end
+# function GF_type(::Type{S}, U) where {T<:AbstractArray,S<:AbstractArray{T}}
+#   GreenFunction{AbstractArray,S,U}
+# end
 
-Base.copy(A::GreenFunction) = typeof(A)(copy(A.data))
+Base.copy(A::GreenFunction) = oftype(A, copy(A.data))
 Base.eltype(::GreenFunction{T,S,U}) where {T,S,U} = eltype(T)
 
 @inline Base.size(A::GreenFunction,I...) = size(A.data,I...)
@@ -66,38 +74,36 @@ const MixedGOL{T,S} = GreenFunction{T,S,<:Union{MixedGreater,MixedLesser}}
   error("Single indexing not allowed")
 end
 @propagate_inbounds function Base.getindex(A::GreaterOrLesser, I::Vararg{Union{Int64,Colon},2})
-  Base.getindex(A.data, I..., ..)
+  Base.getindex(A.data, .., I...) 
 end
 @propagate_inbounds function Base.getindex(A::GreaterOrLesser, I...)
   Base.getindex(A.data, I...)
 end
-@propagate_inbounds function Base.getindex(A::MixedGOL, I::Int64)
-  Base.getindex(A.data, .., I)
-end
 
 @propagate_inbounds function Base.setindex!(A::GreaterOrLesser, v, I::Union{Int64,Colon})
-  error("Single indexing not supported")
+  error("Single indexing not allowed")
 end
 @propagate_inbounds function Base.setindex!(A::GreaterOrLesser, v, F::Vararg{Union{Int64,Colon}, 2})
-  __setindex!(A, v, F, ..)
+  __setindex!(A, v, (..,), F)
 end
 @propagate_inbounds function Base.setindex!(A::GreaterOrLesser, v, I...)
-  __setindex!(A, v, front2_last(I)...)
+  __setindex!(A, v, front_last2(I)...)
 end
-@propagate_inbounds function __setindex!(A::GreaterOrLesser, v, F::Tuple{F1,F2}, I...) where {F1,F2}
-  if ==(F...)
-    setindex!(A.data, v, F..., I...)
+@propagate_inbounds function __setindex!(A::GreaterOrLesser, v, F, L::Tuple{F1,F2}) where {F1,F2}
+  if ==(L...)
+    setindex!(A.data, v, F..., L...)
   else 
-    setindex!(A.data, v, F..., I...)
-    setindex!(A.data, -adjoint(v), reverse(F)..., I...)
+    setindex!(A.data, v, F..., L...)
+    setindex!(A.data, -adjoint(v), F..., reverse(L)...)
   end
+end
+
+@propagate_inbounds function Base.getindex(A::MixedGOL, I::Int64)
+  Base.getindex(A.data, .., I)
 end
 @propagate_inbounds function Base.setindex!(A::MixedGOL, v, I::Int64)
   Base.setindex!(A.data, v, .., I)
 end
-# @inline function Base.setindex!(A::MixedGOL, v, I...)
-#   Base.setindex!(A.data, v, I...)
-# end
 
 # Disable broadcasting
 Base.dotview(A::GreenFunction, I...) = error("Not supported")
@@ -147,15 +153,15 @@ end
 
 Base.resize!(A::GreaterOrLesser, t::Int) = Base.resize!(A, t, t)
 function Base.resize!(A::GreaterOrLesser, t::Vararg{Int,2})
-  if eltype(A) <: AbstractArray
-    newdata = fill(eltype(A)(undef,t...,size(first(A))...))
-  else
-    newdata = typeof(A)(zeros(eltype(A),t...,tail2(size(A))...))
-  end
+  # if eltype(A) <: AbstractArray
+  #   newdata = fill(eltype(A)(undef,t...,size(first(A))...))
+  # else
+  newdata = typeof(A)(zeros(eltype(A),front2(size(A))...,t...))
+  # end
 
-  T, T′ = min.(first2(size(A)), t)
+  T = min(last(size(A)), last(t))
 
-  for t=1:T, t′=1:T′
+  for t=1:T, t′=t:T
     @views newdata[t,t′] = A[t,t′]
   end
 
