@@ -26,15 +26,20 @@ presented in
 Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
 Solving Ordinary Differential Equations I: Nonstiff Problems
 """
-function kbsolve(f_vert, f_diag, u, t₀, tmax; f_line=nothing, dt=nothing, adaptive=true, 
-  max_dt=1e-1, atol=1e-9, rtol=1e-7, max_order=12, qmax=5, qmin=1//5, γ=9//10)
+function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, dt=nothing, adaptive=true, 
+  max_dt=1e-1, atol=1e-9, rtol=1e-7, max_order=12, qmax=5, qmin=1//5, γ=9//10,
+  callback=()->true)
   
   if max_order < 1 || max_order > 12
     error("max_order must be between 1 and 12")
   end
 
-  if t₀ > tmax
-    error("Only t₀ < tmax supported")
+  if isempty(size(t0)) # account for t0 being a vector of times
+    t0 = [t0]
+  end
+
+  if last(t0) > tmax
+    error("Only t0 < tmax supported")
   end
 
   if isnothing(f_line) u = (u,) end
@@ -42,33 +47,41 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; f_line=nothing, dt=nothing, adap
   # Initialize state and caches
   state, caches = begin
     # Resize time-length of the functions `u`
-    foreach(u′->resize!.(u′, 50), u)
+    foreach(u′->resize!.(u′, last(size(u′[1])) + 50), u)
 
     if isnothing(f_line)
       cache_line = nothing
     else
-      u₀ = [x[1] for x in u[2]] # Extract solution at (t₀)
-      cache_line = VCABMCache{typeof(t₀)}(max_order,u₀,f_line(u...,[t₀],1))
+      u₀ = [x[1] for x in u[2]] # Extract solution at (t0)
+      cache_line = VCABMCache{eltype(t0)}(max_order,u₀,f_line(u...,t0,1))
     end
 
-    u₀ = [x[1,1] for x in u[1]] # Extract solution at (t₀,t₀)
-    cache_vert = VCABMCache{typeof(t₀)}(max_order,u₀,f_vert(u...,[t₀],1,1))
-    cache_diag = VCABMCache{typeof(t₀)}(max_order,u₀,f_diag(u...,[t₀],1))
+    u₀ = [x[1,1] for x in u[1]] # Extract solution at (t0,t0)
+    cache_vert = VCABMCache{eltype(t0)}(max_order,u₀,f_vert(u...,t0,1,1))
+    cache_diag = VCABMCache{eltype(t0)}(max_order,u₀,f_diag(u...,t0,1))
 
     # Calculate initial dt
     if dt===nothing
       f′ = (u′,t′) -> begin
         foreach(i->u[1][i][2,1]=u′[i],eachindex(u′))
-        f_vert(u...,[t₀,t′],2,1)
+        f_vert(u...,[t0; t′],2,1)
       end
-      dt = initial_step(f′,u₀,t₀,1,rtol,atol;f₀=cache_vert.f_prev)
+      dt = initial_step(f′,u₀,last(t0),1,rtol,atol;f₀=cache_vert.f_prev)
     end
 
-    VCABMState(u,t₀,dt), KBCaches(cache_vert,cache_diag,cache_line)    
+    VCABMState(u,t0,dt), KBCaches(cache_vert,cache_diag,cache_line)    
   end
 
+  kbsolve_(state, caches, f_vert, f_diag, f_line, tmax, adaptive,
+ max_dt, atol, rtol, max_order, qmax, qmin, γ, callback)
+end
+
+
+function kbsolve_(state, caches, f_vert, f_diag, f_line, tmax, adaptive,
+ max_dt, atol, rtol, max_order, qmax, qmin, γ, callback)
+
   # Time-step
-  @do_while timeloop!(state,caches.diag,tmax,max_dt,adaptive,qmax,qmin,γ) begin
+  @do_while timeloop!(state,caches.diag,tmax,max_dt,adaptive,qmax,qmin,γ) && callback() begin
     T = length(state.t) # current time index
 
     # Step vertically
@@ -92,7 +105,7 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; f_line=nothing, dt=nothing, adap
     end
 
     # Step diagonally and control step
-    f_diag!(u′,_) = begin # internally `f` is a function of `uᵢ` and `tᵢ`
+    f_diag! = (u′,_) -> begin # internally `f` is a function of `uᵢ` and `tᵢ`
       foreach(i->state.u[1][i][T,T]=u′[i], eachindex(u′))
       f_diag(state.u...,state.t,T)
     end
@@ -113,7 +126,7 @@ function kbsolve(f_vert, f_diag, u, t₀, tmax; f_line=nothing, dt=nothing, adap
   # Trim solution
   foreach(u′->resize!.(u′, length(state.t)), state.u)
   
-  return isnothing(f_line) ? (state.u[1], state.t) : (state.u, state.t)
+  return state, caches
 end
 
 function update_caches!(caches, state::VCABMState, f_vert, f_line, max_k)

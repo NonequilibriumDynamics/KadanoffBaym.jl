@@ -69,8 +69,8 @@ mutable struct VCABMState{T,U}
   t::Vector{T}
   dt::T
 
-  function VCABMState(u::U, t₀::T, dt::T) where {T,U}
-    new{T,U}(u,[t₀,t₀+dt],dt)
+  function VCABMState(u::U, t0::Vector{T}, dt::T) where {T,U}
+    new{T,U}(u,[t0; last(t0)+dt],dt)
   end
 end
 
