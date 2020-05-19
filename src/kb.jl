@@ -81,7 +81,7 @@ function kbsolve_(state, caches, f_vert, f_diag, f_line, tmax, adaptive,
  max_dt, atol, rtol, max_order, qmax, qmin, γ, callback)
 
   # Time-step
-  @do_while timeloop!(state,caches.diag,tmax,max_dt,adaptive,qmax,qmin,γ) && callback() begin
+  @do_while timeloop!(state,caches.diag,tmax,max_dt,adaptive,qmax,qmin,γ,callback) begin
     T = length(state.t) # current time index
 
     # Step vertically

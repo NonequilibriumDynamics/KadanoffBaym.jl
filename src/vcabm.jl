@@ -37,7 +37,7 @@ function vcabm(f, u₀, t₀, tmax; dt=nothing, adaptive=true, max_dt=1e-1,
   return state.u, state.t
 end
 
-function timeloop!(state,cache,tmax,max_dt,adaptive,qmax,qmin,γ)
+function timeloop!(state,cache,tmax,max_dt,adaptive,qmax,qmin,γ,callback)
   @unpack k, error_k= cache
 
   if adaptive
@@ -57,7 +57,7 @@ function timeloop!(state,cache,tmax,max_dt,adaptive,qmax,qmin,γ)
 
   if state.t[end] < tmax
     push!(state.t, state.t[end] + state.dt) # add t_next
-    return true
+    return true && callback()
   else
     return false
   end 
