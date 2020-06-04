@@ -9,7 +9,6 @@ using Reexport
 @reexport using EllipsisNotation
 
 include("utils.jl")
-export trapz
 
 include("gf.jl")
 export GreenFunction, Lesser, Greater, MixedLesser, MixedGreater

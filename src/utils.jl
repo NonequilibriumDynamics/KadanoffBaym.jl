@@ -1,32 +1,3 @@
-# Trapezoidal integration rule
-function trapz(x, y)
-  n = length(x)
-  # @assert n == length(y) 
-
-  r = zero(first(y)) # NOTE: not type-stable
-  
-  if n == 1; return r; end
-  
-  for i in 2:n
-    r += (x[i] - x[i-1]) * (y[i] + y[i-1])
-  end
-  
-  return r/2
-end
-
-# Trapezoidal integration rule
-function trapz(x::Vector, y::Vector, i::Int, j::Int)
-  r = zero(first(y)) # NOTE: not type-stable
-  
-  if i == j; return r; end
-  
-  for k in 1+min(i,j):max(i,j)
-    r += (x[k] - x[k-1]) * (y[k] + y[k-1])
-  end
-  
-  return sign(j-i) * r/2
-end
-
 # Return a `Tuple` consisting of all but the last 2 components of `t`.
 @inline front2(t::Tuple) = _front2(t...)
 _front2() = throw(ArgumentError("Cannot call front2 on an empty tuple."))
