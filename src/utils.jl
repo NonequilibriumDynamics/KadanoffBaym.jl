@@ -1,3 +1,15 @@
+# do-while notation in Julia
+macro do_while(condition, block)
+  quote
+    let
+      $block
+      while $condition
+        $block
+      end
+    end
+  end |> esc
+end
+
 # Return a `Tuple` consisting of all but the last 2 components of `t`.
 @inline front2(t::Tuple) = _front2(t...)
 _front2() = throw(ArgumentError("Cannot call front2 on an empty tuple."))

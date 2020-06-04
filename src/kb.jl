@@ -26,7 +26,7 @@ presented in
 Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
 Solving Ordinary Differential Equations I: Nonstiff Problems
 """
-function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, dt=nothing, adaptive=true, 
+function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, dt=nothing, 
   max_dt=1e-1, atol=1e-9, rtol=1e-7, max_order=12, qmax=5, qmin=1//5, γ=9//10,
   callback=()->true)
   
@@ -72,54 +72,82 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, dt=nothing, adapti
     VCABMState(u,t0,dt), KBCaches(cache_vert,cache_diag,cache_line)    
   end
 
-  kbsolve_(state, caches, f_vert, f_diag, f_line, tmax, adaptive,
+  kbsolve_(state, caches, f_vert, f_diag, f_line, tmax,
  max_dt, atol, rtol, max_order, qmax, qmin, γ, callback)
 end
 
 
-function kbsolve_(state, caches, f_vert, f_diag, f_line, tmax, adaptive,
+function kbsolve_(state, caches, f_vert, f_diag, f_line, tmax,
  max_dt, atol, rtol, max_order, qmax, qmin, γ, callback)
+  
+  # This will allow us to have a unified access to f_vert and f_diag
+  function f(t1, t2)
+    isequal(t1, t2) ? f_diag(state.u..., state.t, t1) : f_vert(state.u..., state.t, t1, t2)
+  end
 
-  # Time-step
-  @do_while timeloop!(state,caches.diag,tmax,max_dt,adaptive,qmax,qmin,γ,callback) begin
-    T = length(state.t) # current time index
+  @do_while timeloop!(state,caches.master,tmax,max_dt,qmax,qmin,γ,callback) begin
+    
+    @assert length(caches.vert) + 1 == length(state.t)
 
-    # Step vertically
-    if !isnothing(f_line)
-      u_next = predict!(state, caches.line)
-      foreach(i->state.u[2][i][T]=u_next[i], eachindex(u_next))
-    end
-    for (tⱼ, cache) in enumerate(caches.vert)
+    # Current time index
+    t = length(state.t) 
+
+    # Predictor
+    for (t′, cache) in enumerate([caches.vert; caches.diag])
       u_next = predict!(state, cache)
-      foreach(i->state.u[1][i][T,tⱼ]=u_next[i], eachindex(u_next))
-    end
-    if !isnothing(f_line)
-      u_next = [x[T] for x in state.u[2]]
-      u_next = correct!(u_next, f_line(state.u...,state.t,T), caches.line)
-      foreach(i->state.u[2][i][T]=u_next[i], eachindex(u_next))
-    end
-    for (tⱼ, cache) in enumerate(caches.vert)
-      u_next = [x[T,tⱼ] for x in state.u[1]]
-      u_next = correct!(u_next, f_vert(state.u...,state.t,T,tⱼ), cache)
-      foreach(i->state.u[1][i][T,tⱼ]=u_next[i], eachindex(u_next))
+      foreach(i->state.u[1][i][t,t′]=u_next[i], eachindex(u_next))
     end
 
-    # Step diagonally and control step
-    f_diag! = (u′,_) -> begin # internally `f` is a function of `uᵢ` and `tᵢ`
-      foreach(i->state.u[1][i][T,T]=u′[i], eachindex(u′))
-      f_diag(state.u...,state.t,T)
-    end
-    predict_correct!(f_diag!,state,caches.diag,max_order,atol,rtol,true)
-
-    # Accept step
-    if caches.diag.error_k <= one(caches.diag.error_k)
-      update_caches!(caches,state,f_vert,f_line,max_order)
+    # Predictor + corrector on line function
+    if !isnothing(f_line) 
+      u_next = predict!(state, caches.line)
+      foreach(i->state.u[2][i][t]=u_next[i], eachindex(u_next))
+      u_next = correct!(u_next, f_line(state.u...,state.t,t), caches.line)
+      foreach(i->state.u[2][i][t]=u_next[i], eachindex(u_next))
     end
 
-    # Resize solution
-    if (s = last(size(state.u[1][1]))) == length(state.t)
-      s += min(max(ceil(Int,(tmax-state.t[end])/state.dt),10),20)
-      foreach(u′->resize!.(u′,s), state.u)
+    # Corrector and error estimation
+    for (t′, cache) in enumerate([caches.vert; caches.diag])
+      # Corrector
+      u_next = [x[t,t′] for x in state.u[1]]
+      u_next = correct!(u_next, f(t,t′), cache)
+      foreach(i->state.u[1][i][t,t′]=u_next[i], eachindex(u_next))
+
+      # Error estimation
+      if t′ < (t - caches.master.k) || t == t′ # fully developed caches
+        error_k = estimate_error!(u_next, cache, atol, rtol)
+
+        # Fail step: Section III.7 Eq. (7.4)
+        if error_k > one(error_k)
+          caches.master = cache
+          break
+        end
+      end
+    end
+
+    # If the step is accepted
+    if caches.master.error_k <= one(caches.master.error_k)
+      # Adjust the order based on the maximum error found
+      max_error = (0.0, t)
+      for (t′, cache) in enumerate([caches.vert; caches.diag])
+        if (t′ < (t - caches.master.k) || t == t′) && cache.error_k > max_error[1]
+          max_error = (cache.error_k, t′)
+          caches.master = cache
+        end
+      end
+      t′ = max_error[2]
+
+      # Adjust the master cache's order for the next time-step
+      u_next = [x[t,t′] for x in state.u[1]]
+      adjust_order!(u_next, f(t,t′), state, caches.master, max_order, atol, rtol)
+
+      update_caches!(caches,state,f_vert,f_diag,f_line,max_order)
+
+      # Resize solution if necessary
+      if (s = last(size(state.u[1][1]))) == length(state.t)
+        s += min(max(ceil(Int,(tmax-state.t[end])/state.dt),10),20)
+        foreach(u′->resize!.(u′,s), state.u)
+      end
     end
   end # timeloop!
 
@@ -129,16 +157,24 @@ function kbsolve_(state, caches, f_vert, f_diag, f_line, tmax, adaptive,
   return state, caches
 end
 
-function update_caches!(caches, state::VCABMState, f_vert, f_line, max_k)
-  @assert length(caches.vert)+1 == length(state.t)
+function update_caches!(caches, state::VCABMState, f_vert, f_diag, f_line, max_k)
+  @assert length(caches.vert) + 1 == length(state.t)
 
   T = length(state.t)
-  local_max_k = caches.diag.k
+  local_max_k = caches.master.k
 
   # Update all vertical caches (does the remaining steps of predict_correct!)
   for (tⱼ, cache) in enumerate(caches.vert)
-    cache.u_prev = [x[T,tⱼ] for x in state.u[1]] # u_next was saved in state.u by update
+    cache.u_prev = [x[T,tⱼ] for x in state.u[1]] # u_next was saved in state.u
     cache.f_prev = f_vert(state.u...,state.t,T,tⱼ)
+    cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
+    cache.k = min(local_max_k, cache.k+1) # Ramp up order
+  end
+
+  begin
+    cache = caches.diag
+    cache.u_prev = [x[T,T] for x in state.u[1]] # u_next was saved in state.u
+    cache.f_prev = f_diag(state.u...,state.t,T)
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
     cache.k = min(local_max_k, cache.k+1) # Ramp up order
   end
@@ -146,7 +182,7 @@ function update_caches!(caches, state::VCABMState, f_vert, f_line, max_k)
   # Update the mixed cache (does the remaining steps of predict_correct!)
   if !isnothing(f_line)
     cache = caches.line
-    cache.u_prev = [x[T] for x in state.u[2]] # u_next was saved in state.u by update
+    cache.u_prev = [x[T] for x in state.u[2]] # u_next was saved in state.u
     cache.f_prev = f_line(state.u...,state.t,T)
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
     cache.k = min(local_max_k, cache.k+1) # Ramp up order
@@ -166,8 +202,9 @@ mutable struct KBCaches{T,F}
   vert::Vector{VCABMCache{T,F}}
   diag::VCABMCache{T,F}
   line::Union{Nothing, VCABMCache}
+  master::VCABMCache{T,F} # basically a reference
 
   function KBCaches(vert1::VCABMCache{T,F}, diag, line) where {T,F}
-    new{T,F}([vert1,], diag, line)
+    new{T,F}([vert1,], diag, line, diag)
   end
 end

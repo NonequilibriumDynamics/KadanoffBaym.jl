@@ -1,58 +1,17 @@
-using Parameters: @unpack
-
-# do-while notation in Julia
-macro do_while(condition, block)
-  quote
-    let
-      $block
-      while $condition
-        $block
-      end
-    end
-  end |> esc
-end
-
-function vcabm(f, u₀, t₀, tmax; dt=nothing, adaptive=true, max_dt=1e-1,
-  atol=1e-9, rtol=1e-7, max_order=12, qmax=5, qmin=1//5, γ=9//10)
-  
-  if max_order < 1 || max_order > 12
-    error("max_order must be between 1 and 12")
-  end
-
-  if t₀ > tmax
-    error("Only t₀ < tmax supported")
-  end
-
-  state, cache = initialize(f, u₀, t₀, dt, max_order, atol, rtol)
-
-  @do_while timeloop!(state,cache,tmax,max_dt,adaptive,qmax,qmin,γ) begin
-    predict_correct!(f, state, cache, max_order, atol, rtol, adaptive)
-
-    # update state
-    if cache.error_k <= one(cache.error_k)
-      push!(state.u, cache.u_prev)
-    end
-  end
-
-  return state.u, state.t
-end
-
-function timeloop!(state,cache,tmax,max_dt,adaptive,qmax,qmin,γ,callback)
+function timeloop!(state,cache,tmax,max_dt,qmax,qmin,γ,callback)
   @unpack k, error_k= cache
 
-  if adaptive
-    if cache.error_k > one(cache.error_k)
-      pop!(state.t) # remove t_prev
-    end
+  if cache.error_k > one(cache.error_k)
+    pop!(state.t) # remove t_prev
+  end
 
-    # II.4 Automatic Step Size Control, Eq. (4.13)
-    q = max(inv(qmax), min(inv(qmin), error_k^(1/(k+1)) / γ))
-    state.dt = min(state.dt / q, max_dt)
+  # II.4 Automatic Step Size Control, Eq. (4.13)
+  q = max(inv(qmax), min(inv(qmin), error_k^(1/(k+1)) / γ))
+  state.dt = min(state.dt / q, max_dt)
 
-    # Don't go over tmax
-    if state.t[end] + state.dt > tmax
-      state.dt = tmax - state.t[end]
-    end
+  # Don't go over tmax
+  if state.t[end] + state.dt > tmax
+    state.dt = tmax - state.t[end]
   end
 
   if state.t[end] < tmax
@@ -106,68 +65,13 @@ function initialize(f, u₀, t₀, dt₀, max_k, atol, rtol)
   return VCABMState([u₀,],t₀,dt₀), VCABMCache{typeof(t₀)}(max_k,u₀,f₀)
 end
 
-# Solving Ordinary Differential Equations I: Nonstiff Problems, by Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
-@muladd function predict_correct!(f, state, cache, max_k, atol, rtol, adaptive)
-  @inbounds begin
-    @unpack t,dt = state
-    @unpack u_prev,g,ϕ_np1,ϕstar_n,k = cache
+# Solving Ordinary Differential Equations I: Nonstiff Problems
+# by Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
 
-    t_next = t[end]
-
-    # Explicit Adams: Section III.5 Eq. (5.7)
-    ϕ_and_ϕstar!(state, cache, k+1)
-    u_next = muladd(g[1], ϕstar_n[1], u_prev)
-    for i = 2:k-1
-      u_next = muladd(g[i], ϕstar_n[i], u_next)
-    end
-
-    # Implicit corrector
-    du_np1 = f(u_next, t_next)
-    ϕ_np1!(cache, du_np1, k+1)
-    u_next = muladd(g[k], ϕ_np1[k], u_next)
-
-    if adaptive
-      # Calculate error: Section III.7 Eq. (7.3)
-      error_k = error_estimate((g[k+1]-g[k]) * ϕ_np1[k+1], u_prev, u_next, atol, rtol) |> norm
-      cache.error_k = error_k
-
-      # Fail step: Section III.7 Eq. (7.4)
-      if error_k > one(error_k)
-        return
-      end
-
-      # Accept step
-      f_next = f(u_next, t_next)
-
-      if length(t)<=5 || k<3
-        cache.k = min(k+1, 3, max_k)
-      else
-        # Control order: Section III.7 Eq. (7.7)
-        error_k1 = error_estimate((g[k]-g[k-1]) * ϕ_np1[k], u_prev, u_next, atol, rtol) |> norm
-        error_k2 = error_estimate((g[k-1]-g[k-2]) * ϕ_np1[k-1], u_prev, u_next, atol, rtol) |> norm
-        if max(error_k2, error_k1) <= error_k
-          cache.k = k-1
-        else
-          ϕ_np1!(cache, f_next, k+2)
-          error_kstar = error_estimate(dt * γstar[k+2] * ϕ_np1[k+2], u_prev, u_next, atol, rtol) |> norm
-          if error_kstar < error_k
-            cache.k = min(k+1, max_k)
-            cache.error_k = one(error_k)   # constant dt
-          end
-        end
-      end
-    end # adaptive
-    cache.u_prev = u_next
-    cache.f_prev = f_next
-    cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-  end
-end
-
+# Explicit Adams: Section III.5 Eq. (5.7)
 function predict!(state, cache)
   @inbounds begin
     @unpack u_prev,g,ϕstar_n,k = cache
-
-    # Explicit Adams: Section III.5 Eq. (5.7)
     ϕ_and_ϕstar!(state, cache, k+1)
     u_next = muladd(g[1], ϕstar_n[1], u_prev)
     for i = 2:k-1
@@ -186,6 +90,43 @@ function correct!(u_next, du_np1, cache)
     u_next = muladd(g[k], ϕ_np1[k], u_next)
   end
   u_next
+end
+
+# Calculate error: Section III.7 Eq. (7.3)
+function estimate_error!(u_next, cache, atol, rtol)
+  @unpack u_prev,g,ϕ_np1,ϕstar_n,k = cache
+  error_k = error_estimate((g[k+1]-g[k]) * ϕ_np1[k+1], u_prev, u_next, atol, rtol) |> norm
+  cache.error_k = error_k
+end
+
+# Control order: Section III.7 Eq. (7.7)
+@muladd function adjust_order!(u_next, f_next, state, cache, max_k, atol, rtol)
+  @inbounds begin
+    @unpack t,dt = state
+    @unpack u_prev,g,ϕ_np1,ϕstar_n,error_k,k = cache
+
+    # Fail step: Section III.7 Eq. (7.4)
+    if error_k > one(error_k)
+      @assert false
+    end
+
+    if length(t)<=5 || k<3
+      cache.k = min(k+1, 3, max_k)
+    else
+      error_k1 = error_estimate((g[k]-g[k-1]) * ϕ_np1[k], u_prev, u_next, atol, rtol) |> norm
+      error_k2 = error_estimate((g[k-1]-g[k-2]) * ϕ_np1[k-1], u_prev, u_next, atol, rtol) |> norm
+      if max(error_k2, error_k1) <= error_k
+        cache.k = k-1
+      else
+        ϕ_np1!(cache, f_next, k+2)
+        error_kstar = error_estimate(dt * γstar[k+2] * ϕ_np1[k+2], u_prev, u_next, atol, rtol) |> norm
+        if error_kstar < error_k
+          cache.k = min(k+1, max_k)
+          cache.error_k = one(error_k)   # constant dt
+        end
+      end
+    end
+  end
 end
 
 # Section III.5: Eq (5.9-5.10)
@@ -252,7 +193,6 @@ function initial_step(f, u₀, t₀, k, atol, rtol; f₀=f(u₀, t₀))
 end
 
 # Error estimation and norm: Section II.4 Eq. (4.11)
-# @inline function error_estimate(ũ::Array{T}, u₀::Array{T}, u₁::Array{T}, atol::Real, rtol::Real) where {T<:Number}
 @inline function error_estimate(ũ::Array, u₀::Array, u₁::Array, atol::Real, rtol::Real)
   err = similar(ũ)
   @. err = error_estimate(ũ, u₀, u₁, atol, rtol)
