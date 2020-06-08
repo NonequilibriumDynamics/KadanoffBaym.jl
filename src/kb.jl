@@ -1,54 +1,73 @@
 """
   Kadanoff-Baym adaptive timestepper
 
-Solves the 2-time Voltera integral differential equations
+Solves the 2-time (Voltera integral) differential equations
   du/dt1 = F[u](t1,t2)
   du/dt2 = G[u](t1,t2)
 
 The signature of `f_vert` and `f_diag` must be of the form
   f_vert(u, t_grid, t1, t2)
   f_diag(u, t_grid, t1)
-And if mixed functions `v` are present
+And if 1-time functions `v` are present
   f_vert(u, v, t_grid, t1, t2)
   f_diag(u, v, t_grid, t1)
   f_line(u, v, t_grid, t1)
 
 The initial condition `u` should be an array or tuple of `uᵢⱼ`s and
-if mixed functions `vᵢ` are present, should be of the form (`uᵢⱼ`, `vᵢ`).
+if 1-time functions `vᵢ` are present it should be of the form (`uᵢⱼ`, `vᵢ`).
 
 It is also mandatory that both `u`s and can `v`s can be **indexed** by 2-time 
 and 1-time arguments, respectively, and can be `resized!` at will
   uᵢⱼ = resize!(u, new_size)
   vᵢ = resize!(v, new_size)
 
+Unlike standard ODE solvers, `kbsolve` is designed to mutate the initial 
+condition `u`.
+
 The Kadanoff-Baym timestepper is a 2-time generalization of the VCABM stepper 
 presented in
 Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
 Solving Ordinary Differential Equations I: Nonstiff Problems
 """
-function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, dt=nothing, 
+function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=nothing, 
   max_dt=1e-1, atol=1e-9, rtol=1e-7, max_order=12, qmax=5, qmin=1//5, γ=9//10,
-  callback=()->true)
+  stop=()->false, w_time! =(t1,t2)->nothing, w_line! =(t1)->nothing, st_ch=nothing)
   
+  # Sanity checks
   if max_order < 1 || max_order > 12
     error("max_order must be between 1 and 12")
   end
 
-  if isempty(size(t0)) # account for t0 being a vector of times
+  # Support for t0 being a vector of times
+  if isempty(size(t0))
     t0 = [t0]
   end
 
+  # TODO
   if last(t0) > tmax
     error("Only t0 < tmax supported")
   end
 
-  if isnothing(f_line) u = (u,) end
+  # Internal representation of (`u`, `v`)
+  if isnothing(f_line)
+    u = (u,)
+  end
+
+  # Resize time-length of the functions `u` and `v`
+  foreach(u′->resize!.(u′, last(size(u′[1])) + 50), u)
+
+  function update_time!(u′,t1,t2)
+    foreach(i -> u[1][i][t1,t2] = u′[i], eachindex(u′))
+    w_time!(t1,t2)
+  end
+
+  function update_line!(u′,t1)
+    foreach(i -> u[2][i][t1] = u′[i], eachindex(u′))
+    w_line!(t1)
+  end
 
   # Initialize state and caches
-  state, caches = begin
-    # Resize time-length of the functions `u`
-    foreach(u′->resize!.(u′, last(size(u′[1])) + 50), u)
-
+  state, caches = !isnothing(st_ch) ? st_ch : begin
     if isnothing(f_line)
       cache_line = nothing
     else
@@ -61,57 +80,57 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, dt=nothing,
     cache_diag = VCABMCache{eltype(t0)}(max_order,u₀,f_diag(u...,t0,1))
 
     # Calculate initial dt
-    if dt===nothing
+    if init_dt===nothing
       f′ = (u′,t′) -> begin
-        foreach(i->u[1][i][2,1]=u′[i],eachindex(u′))
+        update_time!(u′,2,1)
         f_vert(u...,[t0; t′],2,1)
       end
-      dt = initial_step(f′,u₀,last(t0),1,rtol,atol;f₀=cache_vert.f_prev)
+      init_dt = initial_step(f′,u₀,last(t0),1,rtol,atol;f₀=cache_vert.f_prev)
     end
 
-    VCABMState(u,t0,dt), KBCaches(cache_vert,cache_diag,cache_line)    
+    VCABMState(u,t0,init_dt), KBCaches(cache_vert,cache_diag,cache_line)    
   end
 
-  kbsolve_(state, caches, f_vert, f_diag, f_line, tmax,
- max_dt, atol, rtol, max_order, qmax, qmin, γ, callback)
+  kbsolve_(state, caches, f_vert, f_diag, f_line, tmax, max_dt, max_order, 
+    atol, rtol, qmax, qmin, γ, stop, update_time!, update_line!)
 end
 
 
-function kbsolve_(state, caches, f_vert, f_diag, f_line, tmax,
- max_dt, atol, rtol, max_order, qmax, qmin, γ, callback)
+function kbsolve_(state, caches, f_vert, f_diag, f_line, tmax, max_dt, max_order, 
+  atol, rtol, qmax, qmin, γ, stop, update_time!, update_line!)
   
-  # This will allow us to have a unified access to f_vert and f_diag
+  # This will allow us to have a unified use of f_vert and f_diag
   function f(t1, t2)
     isequal(t1, t2) ? f_diag(state.u..., state.t, t1) : f_vert(state.u..., state.t, t1, t2)
   end
 
-  @do_while timeloop!(state,caches.master,tmax,max_dt,qmax,qmin,γ,callback) begin
+  # The adaptivity of the integration is controlled by a master cache
+  @do_while timeloop!(state,caches.master,tmax,max_dt,qmax,qmin,γ,stop) begin
     
     @assert length(caches.vert) + 1 == length(state.t)
 
     # Current time index
-    t = length(state.t) 
+    t = length(state.t)
 
     # Predictor
     for (t′, cache) in enumerate([caches.vert; caches.diag])
       u_next = predict!(state, cache)
-      foreach(i->state.u[1][i][t,t′]=u_next[i], eachindex(u_next))
+      update_time!(u_next, t, t′)
     end
 
-    # Predictor + corrector on line function
+    # Predictor + corrector on 1-time function
     if !isnothing(f_line) 
       u_next = predict!(state, caches.line)
-      foreach(i->state.u[2][i][t]=u_next[i], eachindex(u_next))
-      u_next = correct!(u_next, f_line(state.u...,state.t,t), caches.line)
-      foreach(i->state.u[2][i][t]=u_next[i], eachindex(u_next))
+      update_line!(u_next, t)
+      u_next = correct!(u_next, f_line(state.u..., state.t, t), caches.line)
+      update_line!(u_next, t)
     end
 
     # Corrector and error estimation
     for (t′, cache) in enumerate([caches.vert; caches.diag])
-      # Corrector
-      u_next = [x[t,t′] for x in state.u[1]]
+      u_next = [x[t,t′] for x in state.u[1]] # saved in state.u[1] by update_time!
       u_next = correct!(u_next, f(t,t′), cache)
-      foreach(i->state.u[1][i][t,t′]=u_next[i], eachindex(u_next))
+      update_time!(u_next, t, t′)
 
       # Error estimation
       if t′ < (t - caches.master.k) || t == t′ # fully developed caches
@@ -127,10 +146,10 @@ function kbsolve_(state, caches, f_vert, f_diag, f_line, tmax,
 
     # If the step is accepted
     if caches.master.error_k <= one(caches.master.error_k)
-      # Adjust the order based on the maximum error found
-      max_error = (0.0, t)
+      # Set the cache with biggest error as the master cache
+      max_error = (0.0, 0)
       for (t′, cache) in enumerate([caches.vert; caches.diag])
-        if (t′ < (t - caches.master.k) || t == t′) && cache.error_k > max_error[1]
+        if (t′ < (t - caches.master.k) || t′ == t) && cache.error_k > max_error[1]
           max_error = (cache.error_k, t′)
           caches.master = cache
         end
@@ -141,11 +160,12 @@ function kbsolve_(state, caches, f_vert, f_diag, f_line, tmax,
       u_next = [x[t,t′] for x in state.u[1]]
       adjust_order!(u_next, f(t,t′), state, caches.master, max_order, atol, rtol)
 
-      update_caches!(caches,state,f_vert,f_diag,f_line,max_order)
+      # Update all caches
+      update_caches!(caches, state, f_vert, f_diag, f_line, max_order)
 
       # Resize solution if necessary
       if (s = last(size(state.u[1][1]))) == length(state.t)
-        s += min(max(ceil(Int,(tmax-state.t[end])/state.dt),10),20)
+        s += min(max(ceil(Int, (tmax - state.t[end]) / state.dt), 10), 20)
         foreach(u′->resize!.(u′,s), state.u)
       end
     end
@@ -160,38 +180,39 @@ end
 function update_caches!(caches, state::VCABMState, f_vert, f_diag, f_line, max_k)
   @assert length(caches.vert) + 1 == length(state.t)
 
-  T = length(state.t)
+  t = length(state.t)
   local_max_k = caches.master.k
 
-  # Update all vertical caches (does the remaining steps of predict_correct!)
-  for (tⱼ, cache) in enumerate(caches.vert)
-    cache.u_prev = [x[T,tⱼ] for x in state.u[1]] # u_next was saved in state.u
-    cache.f_prev = f_vert(state.u...,state.t,T,tⱼ)
+  # Update all vertical caches
+  for (t′, cache) in enumerate(caches.vert)
+    cache.u_prev = [x[t,t′] for x in state.u[1]] # u_prev was saved in state.u
+    cache.f_prev = f_vert(state.u..., state.t, t, t′)
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
     cache.k = min(local_max_k, cache.k+1) # Ramp up order
   end
 
+  # Update the diagonal cache
   begin
     cache = caches.diag
-    cache.u_prev = [x[T,T] for x in state.u[1]] # u_next was saved in state.u
-    cache.f_prev = f_diag(state.u...,state.t,T)
+    cache.u_prev = [x[t,t] for x in state.u[1]] # u_prev was saved in state.u
+    cache.f_prev = f_diag(state.u..., state.t, t)
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
     cache.k = min(local_max_k, cache.k+1) # Ramp up order
   end
 
-  # Update the mixed cache (does the remaining steps of predict_correct!)
+  # Update the 1-time cache
   if !isnothing(f_line)
     cache = caches.line
-    cache.u_prev = [x[T] for x in state.u[2]] # u_next was saved in state.u
-    cache.f_prev = f_line(state.u...,state.t,T)
+    cache.u_prev = [x[t] for x in state.u[2]] # u_prev was saved in state.u
+    cache.f_prev = f_line(state.u...,state.t,t)
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
     cache.k = min(local_max_k, cache.k+1) # Ramp up order
   end
 
-  # Add a new cache for the next time line!
+  # Add a new cache for the next time
   begin
-    u₀ = [x[T,T] for x in state.u[1]]
-    f₀ = f_vert(state.u...,state.t,T,T)
+    u₀ = [x[t,t] for x in state.u[1]]
+    f₀ = f_vert(state.u..., state.t, t, t)
     push!(caches.vert, VCABMCache{eltype(state.t)}(max_k, u₀, f₀))
   end
 
@@ -202,7 +223,7 @@ mutable struct KBCaches{T,F}
   vert::Vector{VCABMCache{T,F}}
   diag::VCABMCache{T,F}
   line::Union{Nothing, VCABMCache}
-  master::VCABMCache{T,F} # basically a reference
+  master::VCABMCache{T,F} # basically a reference to one of the other caches
 
   function KBCaches(vert1::VCABMCache{T,F}, diag, line) where {T,F}
     new{T,F}([vert1,], diag, line, diag)

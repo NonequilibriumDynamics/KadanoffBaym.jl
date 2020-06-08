@@ -1,4 +1,4 @@
-function timeloop!(state,cache,tmax,max_dt,qmax,qmin,γ,callback)
+function timeloop!(state,cache,tmax,max_dt,qmax,qmin,γ,stop)
   @unpack k, error_k= cache
 
   if cache.error_k > one(cache.error_k)
@@ -14,9 +14,11 @@ function timeloop!(state,cache,tmax,max_dt,qmax,qmin,γ,callback)
     state.dt = tmax - state.t[end]
   end
 
-  if state.t[end] < tmax
+  if stop()
+    return false
+  elseif state.t[end] < tmax
     push!(state.t, state.t[end] + state.dt) # add t_next
-    return true && callback()
+    return true
   else
     return false
   end 
@@ -52,17 +54,6 @@ mutable struct VCABMCache{T,U}
     ϕ_np = Vector{U}(undef, max_k+2)
     new{T,U}(u_prev,f_prev,ϕ_n,ϕ_np,ϕstar_n,ϕstar_nm,zeros(T,max_k+1,max_k+1),zeros(T,max_k+1),1,zero(T))
   end
-end
-
-# Initialize VCABM state
-function initialize(f, u₀, t₀, dt₀, max_k, atol, rtol)
-  f₀ = f(u₀, t₀)
-
-  if dt₀ === nothing
-    dt₀ = initial_step(f, u₀, t₀, 1, rtol, atol; f₀=f₀)
-  end
-
-  return VCABMState([u₀,],t₀,dt₀), VCABMCache{typeof(t₀)}(max_k,u₀,f₀)
 end
 
 # Solving Ordinary Differential Equations I: Nonstiff Problems
@@ -177,6 +168,17 @@ end
 # Coefficients for the implicit Adams methods
 const γstar = [1,-1/2,-1/12,-1/24,-19/720,-3/160,-863/60480,-275/24192,-33953/3628800,-0.00789255,-0.00678585,-0.00592406,-0.00523669,-0.0046775,-0.00421495,-0.0038269]
 
+# Error estimation and norm: Section II.4 Eq. (4.11)
+@inline function error_estimate(ũ::Array, u₀::Array, u₁::Array, atol::Real, rtol::Real)
+  err = similar(ũ)
+  @. err = error_estimate(ũ, u₀, u₁, atol, rtol)
+  err
+end
+@inline function error_estimate(ũ::Number, u₀::Number, u₁::Number, atol::Real, rtol::Real)
+  ũ / (atol + max(norm(u₀), norm(u₁)) * rtol)
+end
+@inline norm(u) = LinearAlgebra.norm(u) / sqrt(length(u))
+
 # Starting Step Size: Section II.4
 function initial_step(f, u₀, t₀, k, atol, rtol; f₀=f(u₀, t₀))
   sc = atol + norm(u₀) * rtol
@@ -191,14 +193,3 @@ function initial_step(f, u₀, t₀, k, atol, rtol; f₀=f(u₀, t₀))
   dt₁ = max(d₁,d₂) <= 1e-15 ? max(1e-6, 1e-3 * dt₀) : (1e-2 / max(d₁,d₂))^(1/(k+1))
   return min(dt₁, 1e2 * dt₀) * 1e-3
 end
-
-# Error estimation and norm: Section II.4 Eq. (4.11)
-@inline function error_estimate(ũ::Array, u₀::Array, u₁::Array, atol::Real, rtol::Real)
-  err = similar(ũ)
-  @. err = error_estimate(ũ, u₀, u₁, atol, rtol)
-  err
-end
-@inline function error_estimate(ũ::Number, u₀::Number, u₁::Number, atol::Real, rtol::Real)
-  ũ / (atol + max(norm(u₀), norm(u₁)) * rtol)
-end
-@inline norm(u) = LinearAlgebra.norm(u) / sqrt(length(u))
