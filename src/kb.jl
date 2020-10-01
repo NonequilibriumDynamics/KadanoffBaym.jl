@@ -31,7 +31,8 @@ Solving Ordinary Differential Equations I: Nonstiff Problems
 """
 function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=nothing, 
   max_dt=1e-1, atol=1e-9, rtol=1e-7, max_order=12, qmax=5, qmin=1//5, γ=9//10,
-  stop=()->false, w_time! =(t1,t2)->nothing, w_line! =(t1)->nothing, st_ch=nothing)
+  stop=()->false, update_time! =(x...)->nothing, update_line! =(x...)->nothing,
+  st_ch=nothing)
   
   # Sanity checks
   if max_order < 1 || max_order > 12
@@ -56,16 +57,6 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=nothing,
   # Resize time-length of the functions `u` and `v`
   foreach(u′->resize!.(u′, last(size(u′[1])) + 50), u)
 
-  function update_time!(u′,times,t1,t2)
-    foreach(i -> u[1][i][t1,t2] = u′[i], eachindex(u′))
-    w_time!(times,t1,t2)
-  end
-
-  function update_line!(u′,times,t1)
-    foreach(i -> u[2][i][t1] = u′[i], eachindex(u′))
-    w_line!(times,t1)
-  end
-
   # Initialize state and caches
   state, caches = !isnothing(st_ch) ? st_ch : begin
     if isnothing(f_line)
@@ -82,8 +73,9 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=nothing,
     # Calculate initial dt
     if init_dt===nothing
       f′ = (u′,t′) -> begin
-        update_time!(u′,[t0; t′],2,1)
-        f_vert(u...,[t0; t′],2,1)
+        foreach(i -> state.u[1][i][2,1] = u′[i], eachindex(u′))
+        update_time!([t0; t'], 2, 1)
+        f_vert(u...,[t0; t′], 2, 1)
       end
       init_dt = initial_step(f′,u₀,last(t0),1,rtol,atol;f₀=cache_vert.f_prev)
     end
@@ -91,14 +83,6 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=nothing,
     VCABMState(u,t0,init_dt), KBCaches(cache_vert,cache_diag,cache_line)    
   end
 
-  kbsolve_(state, caches, f_vert, f_diag, f_line, tmax, max_dt, max_order, 
-    atol, rtol, qmax, qmin, γ, stop, update_time!, update_line!)
-end
-
-
-function kbsolve_(state, caches, f_vert, f_diag, f_line, tmax, max_dt, max_order, 
-  atol, rtol, qmax, qmin, γ, stop, update_time!, update_line!)
-  
   # This will allow us to have a unified use of f_vert and f_diag
   function f(t1, t2)
     isequal(t1, t2) ? f_diag(state.u..., state.t, t1) : f_vert(state.u..., state.t, t1, t2)
@@ -112,25 +96,28 @@ function kbsolve_(state, caches, f_vert, f_diag, f_line, tmax, max_dt, max_order
     # Current time index
     t = length(state.t)
 
-    # Predictor
+    # Predictor & update all times
     for (t′, cache) in enumerate([caches.vert; caches.diag])
       u_next = predict!(state, cache)
-      update_time!(u_next, state.t, t, t′)
+      foreach(i -> state.u[1][i][t,t′] = u_next[i], eachindex(u_next))
+    end
+    for (t′, _) in enumerate([caches.vert; caches.diag])
+      update_time!(state.t, t, t′)
     end
 
     # Predictor + corrector on 1-time function
     if !isnothing(f_line) 
       u_next = predict!(state, caches.line)
-      update_line!(u_next, state.t, t)
+      foreach(i -> u[2][i][t] = u_next[i], eachindex(u_next)); update_line!(state.t, t)
       u_next = correct!(u_next, f_line(state.u..., state.t, t), caches.line)
-      update_line!(u_next, state.t, t)
+      foreach(i -> u[2][i][t] = u_next[i], eachindex(u_next)); update_line!(state.t, t)
     end
 
     # Corrector and error estimation
     for (t′, cache) in enumerate([caches.vert; caches.diag])
-      u_next = [x[t,t′] for x in state.u[1]] # saved in state.u[1] by update_time!
+      u_next = [x[t,t′] for x in state.u[1]] # saved in state.u[1]
       u_next = correct!(u_next, f(t,t′), cache)
-      update_time!(u_next, state.t, t, t′)
+      foreach(i -> state.u[1][i][t,t′] = u_next[i], eachindex(u_next)); update_time!(state.t, t, t′)
 
       # Error estimation
       if t′ < (t - caches.master.k) || t == t′ # fully developed caches
@@ -146,6 +133,11 @@ function kbsolve_(state, caches, f_vert, f_diag, f_line, tmax, max_dt, max_order
 
     # If the step is accepted
     if caches.master.error_k <= one(caches.master.error_k)
+      # Update all times
+      for (t′, _) in enumerate([caches.vert; caches.diag])
+        update_time!(state.t, t, t′)
+      end
+
       # Set the cache with biggest error as the master cache
       max_error = (0.0, 0)
       for (t′, cache) in enumerate([caches.vert; caches.diag])
