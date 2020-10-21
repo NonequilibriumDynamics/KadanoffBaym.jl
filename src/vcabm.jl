@@ -1,29 +1,3 @@
-function timeloop!(state,cache,tmax,max_dt,qmax,qmin,γ,stop)
-  @unpack k, error_k= cache
-
-  if cache.error_k > one(cache.error_k)
-    pop!(state.t) # remove t_prev
-  end
-
-  # II.4 Automatic Step Size Control, Eq. (4.13)
-  q = max(inv(qmax), min(inv(qmin), error_k^(1/(k+1)) / γ))
-  state.dt = min(state.dt / q, max_dt)
-
-  # Don't go over tmax
-  if state.t[end] + state.dt > tmax
-    state.dt = tmax - state.t[end]
-  end
-
-  if stop()
-    return false
-  elseif state.t[end] < tmax
-    push!(state.t, state.t[end] + state.dt) # add t_next
-    return true
-  else
-    return false
-  end 
-end
-
 # Holds the information about the integration
 mutable struct VCABMState{T,U}
   u::U
@@ -55,9 +29,6 @@ mutable struct VCABMCache{T,U}
     new{T,U}(u_prev,f_prev,ϕ_n,ϕ_np,ϕstar_n,ϕstar_nm,zeros(T,max_k+1,max_k+1),zeros(T,max_k+1),1,zero(T))
   end
 end
-
-# Solving Ordinary Differential Equations I: Nonstiff Problems
-# by Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
 
 # Explicit Adams: Section III.5 Eq. (5.7)
 function predict!(state, cache)

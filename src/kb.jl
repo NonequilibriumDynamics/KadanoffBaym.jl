@@ -29,7 +29,7 @@ presented in
 Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
 Solving Ordinary Differential Equations I: Nonstiff Problems
 """
-function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=nothing, 
+function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=0.0, 
   max_dt=1e-1, atol=1e-9, rtol=1e-7, max_order=12, qmax=5, qmin=1//5, γ=9//10,
   stop=()->false, update_time! =(x...)->nothing, update_line! =(x...)->nothing,
   st_ch=nothing)
@@ -54,30 +54,32 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=nothing,
     u = (u,)
   end
 
-  # Resize time-length of the functions `u` and `v`
-  foreach(u′->resize!.(u′, last(size(u′[1])) + 50), u)
-
   # Initialize state and caches
   state, caches = !isnothing(st_ch) ? st_ch : begin
     if isnothing(f_line)
       cache_line = nothing
     else
-      u₀ = [x[1] for x in u[2]] # Extract solution at (t0)
-      cache_line = VCABMCache{eltype(t0)}(max_order,u₀,f_line(u...,t0,1))
+      u0 = [x[1] for x in u[2]] # Extract solution at (t0)
+      update_line!(t0, 1)
+      cache_line = VCABMCache{eltype(t0)}(max_order,u0,f_line(u...,t0,1))
     end
 
-    u₀ = [x[1,1] for x in u[1]] # Extract solution at (t0,t0)
-    cache_vert = VCABMCache{eltype(t0)}(max_order,u₀,f_vert(u...,t0,1,1))
-    cache_diag = VCABMCache{eltype(t0)}(max_order,u₀,f_diag(u...,t0,1))
+    u0 = [x[1,1] for x in u[1]] # Extract solution at (t0,t0)
+    update_time!(t0, 1, 1)
+    cache_vert = VCABMCache{eltype(t0)}(max_order,u0,f_vert(u...,t0,1,1))
+    cache_diag = VCABMCache{eltype(t0)}(max_order,u0,f_diag(u...,t0,1))
+
+    # Resize time-length of the functions `u` and `v`
+    foreach(u -> resize!.(u, last(size(last(u))) + 50), u)
 
     # Calculate initial dt
-    if init_dt===nothing
-      f′ = (u′,t′) -> begin
-        foreach(i -> state.u[1][i][2,1] = u′[i], eachindex(u′))
-        update_time!([t0; t'], 2, 1)
-        f_vert(u...,[t0; t′], 2, 1)
+    if iszero(init_dt)
+      f′ = (u_next, t_next) -> begin
+        foreach((u,u′) -> u[2,1] = u′, u[1], u_next)
+        update_time!([t0; t_next], 2, 1)
+        f_vert(u..., [t0; t_next], 2, 1)
       end
-      init_dt = initial_step(f′,u₀,last(t0),1,rtol,atol;f₀=cache_vert.f_prev)
+      init_dt = initial_step(f′,u0,last(t0),rtol,atol; f0=cache_vert.f_prev)
     end
 
     VCABMState(u,t0,init_dt), KBCaches(cache_vert,cache_diag,cache_line)    
@@ -90,8 +92,13 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=nothing,
 
   # The adaptivity of the integration is controlled by a master cache
   @do_while timeloop!(state,caches.master,tmax,max_dt,qmax,qmin,γ,stop) begin
-    
     @assert length(caches.vert) + 1 == length(state.t)
+
+    # Resize solution if necessary
+    if (s = last(size(last(state.u[1])))) == length(state.t)
+      s += min(max(ceil(Int, (tmax - state.t[end]) / state.dt), 10), 20)
+      foreach(u -> resize!.(u, s), state.u)
+    end
 
     # Current time index
     t = length(state.t)
@@ -99,7 +106,7 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=nothing,
     # Predictor & update all times
     for (t′, cache) in enumerate([caches.vert; caches.diag])
       u_next = predict!(state, cache)
-      foreach(i -> state.u[1][i][t,t′] = u_next[i], eachindex(u_next))
+      foreach((u,u′) -> u[t,t′] = u′, state.u[1], u_next)
     end
     for (t′, _) in enumerate([caches.vert; caches.diag])
       update_time!(state.t, t, t′)
@@ -108,16 +115,16 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=nothing,
     # Predictor + corrector on 1-time function
     if !isnothing(f_line) 
       u_next = predict!(state, caches.line)
-      foreach(i -> u[2][i][t] = u_next[i], eachindex(u_next)); update_line!(state.t, t)
+      foreach((u,u′) -> u[t] = u′, state.u[2], u_next); update_line!(state.t, t)
       u_next = correct!(u_next, f_line(state.u..., state.t, t), caches.line)
-      foreach(i -> u[2][i][t] = u_next[i], eachindex(u_next)); update_line!(state.t, t)
+      foreach((u,u′) -> u[t] = u′, state.u[2], u_next); update_line!(state.t, t)
     end
 
     # Corrector and error estimation
     for (t′, cache) in enumerate([caches.vert; caches.diag])
       u_next = [x[t,t′] for x in state.u[1]] # saved in state.u[1]
       u_next = correct!(u_next, f(t,t′), cache)
-      foreach(i -> state.u[1][i][t,t′] = u_next[i], eachindex(u_next)); update_time!(state.t, t, t′)
+      foreach((u,u′) -> u[t,t′] = u′, state.u[1], u_next); update_time!(state.t, t, t′)
 
       # Error estimation
       if t′ < (t - caches.master.k) || t == t′ # fully developed caches
@@ -139,7 +146,7 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=nothing,
       end
 
       # Set the cache with biggest error as the master cache
-      max_error = (0.0, 0)
+      max_error = (0.0, 1)
       for (t′, cache) in enumerate([caches.vert; caches.diag])
         if (t′ < (t - caches.master.k) || t′ == t) && cache.error_k > max_error[1]
           max_error = (cache.error_k, t′)
@@ -154,17 +161,11 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=nothing,
 
       # Update all caches
       update_caches!(caches, state, f_vert, f_diag, f_line, max_order)
-
-      # Resize solution if necessary
-      if (s = last(size(state.u[1][1]))) == length(state.t)
-        s += min(max(ceil(Int, (tmax - state.t[end]) / state.dt), 10), 20)
-        foreach(u′->resize!.(u′,s), state.u)
-      end
     end
   end # timeloop!
 
   # Trim solution
-  foreach(u′->resize!.(u′, length(state.t)), state.u)
+  foreach(u -> resize!.(u, length(state.t)), state.u)
   
   return state, caches
 end
@@ -220,4 +221,30 @@ mutable struct KBCaches{T,F}
   function KBCaches(vert1::VCABMCache{T,F}, diag, line) where {T,F}
     new{T,F}([vert1,], diag, line, diag)
   end
+end
+
+function timeloop!(state,cache,tmax,max_dt,qmax,qmin,γ,stop)
+  @unpack k, error_k= cache
+
+  if cache.error_k > one(cache.error_k)
+    pop!(state.t) # remove t_prev
+  end
+
+  # II.4 Automatic Step Size Control, Eq. (4.13)
+  q = max(inv(qmax), min(inv(qmin), error_k^(1/(k+1)) / γ))
+  state.dt = min(state.dt / q, max_dt)
+
+  # Don't go over tmax
+  if state.t[end] + state.dt > tmax
+    state.dt = tmax - state.t[end]
+  end
+
+  if stop()
+    return false
+  elseif state.t[end] < tmax
+    push!(state.t, state.t[end] + state.dt) # add t_next
+    return true
+  else
+    return false
+  end 
 end
