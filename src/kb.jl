@@ -127,14 +127,12 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=0.0,
       foreach((u,u′) -> u[t,t′] = u′, state.u[1], u_next); update_time!(state.t, t, t′)
 
       # Error estimation
-      if t′ < (t - caches.master.k) || t == t′ # fully developed caches
-        error_k = estimate_error!(u_next, cache, atol, rtol)
+      error_k = estimate_error!(u_next, cache, atol, rtol)
 
-        # Fail step: Section III.7 Eq. (7.4)
-        if error_k > one(error_k)
-          caches.master = cache
-          break
-        end
+      # Fail step: Section III.7 Eq. (7.4)
+      if error_k > one(error_k)
+        caches.master = cache
+        break
       end
     end
 
@@ -148,7 +146,7 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=0.0,
       # Set the cache with biggest error as the master cache
       max_error = (0.0, 1)
       for (t′, cache) in enumerate([caches.vert; caches.diag])
-        if (t′ < (t - caches.master.k) || t′ == t) && cache.error_k > max_error[1]
+        if cache.error_k > max_error[1]
           max_error = (cache.error_k, t′)
           caches.master = cache
         end
@@ -204,9 +202,23 @@ function update_caches!(caches, state::VCABMState, f_vert, f_diag, f_line, max_k
 
   # Add a new cache for the next time
   begin
-    u₀ = [x[t,t] for x in state.u[1]]
-    f₀ = f_vert(state.u..., state.t, t, t)
-    push!(caches.vert, VCABMCache{eltype(state.t)}(max_k, u₀, f₀))
+    times = copy(state.t)
+
+    tc = max(t - local_max_k, 1)
+
+    u0 = [x[tc,t] for x in state.u[1]]
+    f0 = f_vert(state.u..., state.t, tc, t)
+    cache = VCABMCache{eltype(state.t)}(max_k, u0, f0)
+
+    for t′ in (tc+1):t
+      state.t = times[1:t′]; ϕ_and_ϕstar!(state, cache, cache.k+1)
+
+      cache.u_prev = [x[t′,t] for x in state.u[1]]
+      cache.f_prev = f_vert(state.u..., times, t′, t)
+      cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
+      cache.k = min(local_max_k, cache.k+1)
+    end
+    push!(caches.vert, cache)
   end
 
   @assert length(caches.vert) == length(state.t)

@@ -64,7 +64,7 @@ end
 # Control order: Section III.7 Eq. (7.7)
 @muladd function adjust_order!(u_next, f_next, state, cache, max_k, atol, rtol)
   @inbounds begin
-    @unpack t,dt = state
+    @unpack t = state
     @unpack u_prev,g,ϕ_np1,ϕstar_n,error_k,k = cache
 
     # Fail step: Section III.7 Eq. (7.4)
@@ -81,7 +81,7 @@ end
         cache.k = k-1
       else
         ϕ_np1!(cache, f_next, k+2)
-        error_kstar = error_estimate(dt * γstar[k+2] * ϕ_np1[k+2], u_prev, u_next, atol, rtol) |> norm
+        error_kstar = error_estimate((t[end] - t[end-1]) * γstar[k+2] * ϕ_np1[k+2], u_prev, u_next, atol, rtol) |> norm
         if error_kstar < error_k
           cache.k = min(k+1, max_k)
           cache.error_k = one(error_k)   # constant dt
@@ -94,12 +94,12 @@ end
 # Section III.5: Eq (5.9-5.10)
 function ϕ_and_ϕstar!(state, cache, k)
   @inbounds begin
-    @unpack t, dt = state
+    @unpack t = state
     @unpack f_prev, ϕstar_nm1, ϕ_n, ϕstar_n, c, g = cache
     t = reverse(t)
     t_next = t[1]
     t_prev = t[2]
-    β = one(dt)
+    β = one(eltype(t))
 
     for i = 1:k
       # Calculation of Φ
@@ -115,14 +115,14 @@ function ϕ_and_ϕstar!(state, cache, k)
       # Calculation of g
       for q = 1:k-(i-1)
         if i > 2
-          c[i,q] = muladd(-dt/(t_next - t[i]), c[i-1,q+1], c[i-1,q])
+          c[i,q] = muladd(-(t_next - t_prev)/(t_next - t[i]), c[i-1,q+1], c[i-1,q])
         elseif i == 1
           c[i,q] = inv(q)
         elseif i == 2
           c[i,q] = inv(q*(q+1))
         end
       end
-      g[i] = c[i,1] * dt
+      g[i] = c[i,1] * (t_next - t_prev)
     end
   end
 end
