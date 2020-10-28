@@ -30,7 +30,7 @@ mutable struct VCABMCache{T,U}
   end
 end
 
-# Explicit Adams: Section III.5 Eq. (5.7)
+# Explicit Adams: Section III.5 Eq. (5.5)
 function predict!(state, cache)
   @inbounds begin
     @unpack u_prev,g,ϕstar_n,k = cache
@@ -43,15 +43,24 @@ function predict!(state, cache)
   u_next
 end
 
-function correct!(u_next, du_np1, cache)
+# Implicit Adams: Section III.5 Eq (5.7)
+function correct!(u_next, du, cache)
+  @unpack g,ϕ_np1,k = cache
   @inbounds begin
-    @unpack g,ϕ_np1,k = cache
-
-    # Implicit corrector
-    ϕ_np1!(cache, du_np1, k+1)
+    ϕ_np1!(cache, du, k+1)
     u_next = muladd(g[k], ϕ_np1[k], u_next)
   end
   u_next
+end
+
+function ϕ_np1!(cache, du, k)
+  @unpack ϕ_np1, ϕstar_n = cache
+  @inbounds begin
+    ϕ_np1[1] = du
+    for i = 2:k
+      ϕ_np1[i] = ϕ_np1[i-1] - ϕstar_n[i-1]
+    end
+  end
 end
 
 # Calculate error: Section III.7 Eq. (7.3)
@@ -126,21 +135,12 @@ function ϕ_and_ϕstar!(state, cache, k)
     end
   end
 end
-function ϕ_np1!(cache, du_np1, k)
-  @inbounds begin
-    @unpack ϕ_np1, ϕstar_n = cache
-    ϕ_np1[1] = du_np1
-    for i = 2:k
-      ϕ_np1[i] = ϕ_np1[i-1] - ϕstar_n[i-1]
-    end
-  end
-end
 
 # Coefficients for the implicit Adams methods
 const γstar = [1,-1/2,-1/12,-1/24,-19/720,-3/160,-863/60480,-275/24192,-33953/3628800,-0.00789255,-0.00678585,-0.00592406,-0.00523669,-0.0046775,-0.00421495,-0.0038269]
 
 # Error estimation and norm: Section II.4 Eq. (4.11)
-@inline function error_estimate(ũ::Array, u₀::Array, u₁::Array, atol::Real, rtol::Real)
+@inline function error_estimate(ũ::AbstractArray, u₀::AbstractArray, u₁::AbstractArray, atol::Real, rtol::Real)
   err = similar(ũ)
   @. err = error_estimate(ũ, u₀, u₁, atol, rtol)
   err

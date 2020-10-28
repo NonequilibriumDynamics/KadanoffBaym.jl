@@ -118,6 +118,7 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=0.0,
       foreach((u,u′) -> u[t] = u′, state.u[2], u_next); update_line!(state.t, t)
       u_next = correct!(u_next, f_line(state.u..., state.t, t), caches.line)
       foreach((u,u′) -> u[t] = u′, state.u[2], u_next); update_line!(state.t, t)
+      estimate_error!(u_next, caches.line, atol, rtol)
     end
 
     # Corrector and error estimation
@@ -133,6 +134,12 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=0.0,
       if error_k > one(error_k)
         caches.master = cache
         break
+      end
+    end
+
+    if !isnothing(f_line)
+      if caches.line.error_k > caches.master.error_k
+        caches.master = caches.line
       end
     end
 
@@ -228,7 +235,7 @@ mutable struct KBCaches{T,F}
   vert::Vector{VCABMCache{T,F}}
   diag::VCABMCache{T,F}
   line::Union{Nothing, VCABMCache}
-  master::VCABMCache{T,F} # basically a reference to one of the other caches
+  master::VCABMCache # basically a reference to one of the other caches
 
   function KBCaches(vert1::VCABMCache{T,F}, diag, line) where {T,F}
     new{T,F}([vert1,], diag, line, diag)
