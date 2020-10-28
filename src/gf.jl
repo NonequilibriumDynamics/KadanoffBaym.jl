@@ -25,6 +25,10 @@ Defined as
 struct MixedGreater <: GreenFunctionType end
 
 """
+"""
+struct Classical <: GreenFunctionType end
+
+"""
     GreenFunction
 
 A 2-time Green function with array indexing operations respecting the 
@@ -68,8 +72,6 @@ Base.eltype(::GreenFunction{T,S,U}) where {T,S,U} = eltype(T)
 # @inline Base.axes(A::GreenFunction, d) = axes(A.data, d)
 
 const GreaterOrLesser{T,S} = GreenFunction{T,S,<:Union{Greater,Lesser}}
-const MixedGOL{T,S} = GreenFunction{T,S,<:Union{MixedGreater,MixedLesser}}
-
 @inline function Base.getindex(A::GreaterOrLesser, I::Union{Int64,Colon})
   error("Single indexing not allowed")
 end
@@ -79,7 +81,6 @@ end
 @propagate_inbounds function Base.getindex(A::GreaterOrLesser, I...)
   Base.getindex(A.data, I...)
 end
-
 @propagate_inbounds function Base.setindex!(A::GreaterOrLesser, v, I::Union{Int64,Colon})
   error("Single indexing not allowed")
 end
@@ -98,11 +99,40 @@ end
   end
 end
 
+const MixedGOL{T,S} = GreenFunction{T,S,<:Union{MixedGreater,MixedLesser}}
 @propagate_inbounds function Base.getindex(A::MixedGOL, I::Int64)
   Base.getindex(A.data, .., I)
 end
 @propagate_inbounds function Base.setindex!(A::MixedGOL, v, I::Int64)
   Base.setindex!(A.data, v, .., I)
+end
+
+const Classical_{T,S} = GreenFunction{T,S,Classical}
+@inline function Base.getindex(A::Classical_, I::Union{Int64,Colon})
+  error("Single indexing not allowed")
+end
+@propagate_inbounds function Base.getindex(A::Classical_, I::Vararg{Union{Int64,Colon},2})
+  Base.getindex(A.data, .., I...) 
+end
+@propagate_inbounds function Base.getindex(A::Classical_, I...)
+  Base.getindex(A.data, I...)
+end
+@propagate_inbounds function Base.setindex!(A::Classical_, v, I::Union{Int64,Colon})
+  error("Single indexing not allowed")
+end
+@propagate_inbounds function Base.setindex!(A::Classical_, v, F::Vararg{Union{Int64,Colon}, 2})
+  __setindex!(A, v, (..,), F)
+end
+@propagate_inbounds function Base.setindex!(A::Classical_, v, I...)
+  __setindex!(A, v, front_last2(I)...)
+end
+@propagate_inbounds function __setindex!(A::Classical_, v, F, L::Tuple{F1,F2}) where {F1,F2}
+  if ==(L...)
+    setindex!(A.data, v, F..., L...)
+  else 
+    setindex!(A.data, v, F..., L...)
+    setindex!(A.data, v, F..., reverse(L)...)
+  end
 end
 
 # Disable broadcasting
