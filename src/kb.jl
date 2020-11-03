@@ -165,7 +165,7 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=0.0,
       adjust_order!(u_next, f(t,t′), state, caches.master, max_order, atol, rtol)
 
       # Update all caches
-      update_caches!(caches, state, f_vert, f_diag, f_line, max_order)
+      update_caches!(caches, state, f_vert, f_diag, f_line)
     end
   end # timeloop!
 
@@ -175,18 +175,17 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=0.0,
   return state, caches
 end
 
-function update_caches!(caches, state::VCABMState, f_vert, f_diag, f_line, max_k)
+function update_caches!(caches, state::VCABMState, f_vert, f_diag, f_line)
   @assert length(caches.vert) + 1 == length(state.t)
 
   t = length(state.t)
-  local_max_k = caches.master.k
 
   # Update all vertical caches
   for (t′, cache) in enumerate(caches.vert)
     cache.u_prev = [x[t,t′] for x in state.u[1]] # u_prev was saved in state.u
     cache.f_prev = f_vert(state.u..., state.t, t, t′)
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-    cache.k = min(local_max_k, cache.k+1) # Ramp up order
+    cache.k = min(caches.master.k, cache.k+1) # Ramp up order
   end
 
   # Update the diagonal cache
@@ -195,7 +194,7 @@ function update_caches!(caches, state::VCABMState, f_vert, f_diag, f_line, max_k
     cache.u_prev = [x[t,t] for x in state.u[1]] # u_prev was saved in state.u
     cache.f_prev = f_diag(state.u..., state.t, t)
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-    cache.k = min(local_max_k, cache.k+1) # Ramp up order
+    cache.k = min(caches.master.k, cache.k+1) # Ramp up order
   end
 
   # Update the 1-time cache
@@ -204,26 +203,25 @@ function update_caches!(caches, state::VCABMState, f_vert, f_diag, f_line, max_k
     cache.u_prev = [x[t] for x in state.u[2]] # u_prev was saved in state.u
     cache.f_prev = f_line(state.u...,state.t,t)
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-    cache.k = min(local_max_k, cache.k+1) # Ramp up order
+    cache.k = min(caches.master.k, cache.k+1) # Ramp up order
   end
 
   # Add a new cache for the next time
   begin
     times = copy(state.t)
 
-    tc = max(t - local_max_k, 1)
+    t0 = max(t - caches.master.k, 1)
+    u0 = [x[t0,t] for x in state.u[1]]
+    f0 = f_vert(state.u..., state.t, t0, t)
+    cache = VCABMCache{eltype(state.t)}(length(caches.diag.ϕ_n)-1, u0, f0)
 
-    u0 = [x[tc,t] for x in state.u[1]]
-    f0 = f_vert(state.u..., state.t, tc, t)
-    cache = VCABMCache{eltype(state.t)}(max_k, u0, f0)
-
-    for t′ in (tc+1):t
+    for t′ in (t0+1):t
       state.t = times[1:t′]; ϕ_and_ϕstar!(state, cache, cache.k+1)
 
       cache.u_prev = [x[t′,t] for x in state.u[1]]
       cache.f_prev = f_vert(state.u..., times, t′, t)
       cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-      cache.k = min(local_max_k, cache.k+1)
+      cache.k = min(caches.master.k, cache.k+1)
     end
     push!(caches.vert, cache)
   end
