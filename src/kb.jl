@@ -32,7 +32,7 @@ Solving Ordinary Differential Equations I: Nonstiff Problems
 function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=0.0, 
   max_dt=1e-1, atol=1e-9, rtol=1e-7, max_order=12, qmax=5, qmin=1//5, γ=9//10,
   stop=()->false, update_time! =(x...)->nothing, update_line! =(x...)->nothing,
-  st_ch=nothing)
+  st_ch=nothing, kernel_vert=nothing, kernel_diag=nothing, v=nothing)
   
   # Sanity checks
   if max_order < 1 || max_order > 12
@@ -86,8 +86,23 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=0.0,
   end
 
   # This will allow us to have a unified use of f_vert and f_diag
-  function f(t1, t2)
-    isequal(t1, t2) ? f_diag(state.u..., state.t, t1) : f_vert(state.u..., state.t, t1, t2)
+  function f(t1, t2, predict::Bool)
+    if isequal(t1, t2)
+      # if predict
+      #   v′ = volterra_predict(t -> kernel_diag(state.t,t1,t), state, caches.master)
+      # else
+      #   v′ = volterra_correct()
+      # end
+      # foreach((v,v′) -> v[t,t′] = v′, v, v′)
+      f_diag(state.u..., state.t, t1)
+    else
+      # if predict
+      #   v′ = volterra_predict(t -> kernel_vert(state.t,t1,t2,t), state, caches.master)
+      # else
+      #   v′ = volterra_correct()
+      # end
+      # foreach((v,v′) -> v[t,t′] = v′, v, v′)
+      return f_vert(state.u..., state.t, t1, t2)
   end
 
   # The adaptivity of the integration is controlled by a master cache
