@@ -35,14 +35,14 @@ function kbsolve(f_vert, f_diag, u, t0, tmax;
   v=nothing, kernel_vert=nothing, kernel_diag=nothing,
   kwargs...)
   
-  opts = VCABMOptions(;kwargs...)  
+  opts = VCABMOptions(; kwargs...)  
 
   @assert t0 < tmax "Only t0 < tmax supported"
 
   # Initialize state and caches
   state, caches = begin
     if isnothing(f_line)
-      u = (u,) # Internal representation of `u` is (`u`, `v`)
+      u = (u, ) # Internal representation of `u` is (`u`, `v`)
       cache_line = nothing
     else
       u0 = [x[1] for x in u[2]] # Extract solution at (t0)
@@ -104,7 +104,7 @@ function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time,
 
     # Resize solution if necessary
     if (s = last(size(last(state.u[1])))) == t
-      s += min(max(ceil(Int, (tmax - state.t[end]) / state.dt), 10), 20)
+      s += min(max(ceil(Int, (tmax - state.t[end]) / (state.t[end] - state.t[end-1])), 10), 20)
       foreach(u -> resize!.(u, s), state.u)
     end
 
@@ -172,9 +172,9 @@ function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time,
 end
 
 function update_caches!(caches, state::VCABMState, f_vert, f_diag, f_line)
-  @assert length(caches.vert) + 1 == length(state.t)
-
   t = length(state.t)
+
+  @assert length(caches.vert) + 1 == t
 
   # Update all vertical caches
   for (t′, cache) in enumerate(caches.vert)
@@ -222,7 +222,7 @@ function update_caches!(caches, state::VCABMState, f_vert, f_diag, f_line)
     push!(caches.vert, cache)
   end
 
-  @assert length(caches.vert) == length(state.t)
+  @assert length(caches.vert) == t
 end
 
 function timeloop!(state,cache,tmax,opts)
