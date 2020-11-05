@@ -1,11 +1,33 @@
-# Holds the information about the integration
-mutable struct VCABMState{T,U}
-  u::U
-  t::Vector{T}
-  dt::T
+struct VCABMOptions
+  atol::Number
+  rtol::Number
+  dtini::Number
+  dtmax::Number
+  qmax::Number
+  qmin::Number
+  γ::Number
+  kmax::Number
+  stop::Function
+end
 
-  function VCABMState(u::U, t0::Vector{T}, dt::T) where {T,U}
-    new{T,U}(u,[t0; last(t0)+dt],dt)
+function VCABMOptions(; atol=1e-8, rtol=1e-6, dtini=0.0, dtmax=1e-1, qmax=5, 
+  qmin=1//5, γ=9//10, kmax=12, stop=()->false)
+
+  if kmax < 1 || kmax > 12
+    error("kmax must be between 1 and 12")
+  end
+
+  return VCABMOptions(atol, rtol, dtini, dtmax, qmax, qmin, γ, kmax, stop)
+end
+
+# Holds the information about the integration
+mutable struct VCABMState{T,U,V}
+  u::U
+  v::V
+  t::T
+
+  function VCABMState(u::U, v::V, t::T) where {T,U,V}
+    new{T,U,V}(u, v, t)
   end
 end
 
@@ -36,7 +58,7 @@ function predict!(state, cache)
     @unpack u_prev,g,ϕstar_n,k = cache
     ϕ_and_ϕstar!(state, cache, k+1)
     u_next = muladd(g[1], ϕstar_n[1], u_prev)
-    for i = 2:k-1
+    for i = 2:k-1 # NOTE: Check this (-1)
       u_next = muladd(g[i], ϕstar_n[i], u_next)
     end
   end

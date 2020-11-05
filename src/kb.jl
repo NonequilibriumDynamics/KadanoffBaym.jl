@@ -17,7 +17,7 @@ The initial condition `u` should be an array or tuple of `uᵢⱼ`s and
 if 1-time functions `vᵢ` are present it should be of the form (`uᵢⱼ`, `vᵢ`).
 
 It is also mandatory that both `u`s and can `v`s can be **indexed** by 2-time 
-and 1-time arguments, respectively, and can be `resized!` at will
+and 1-time arguments, respectively, and can be `resize!`d at will
   uᵢⱼ = resize!(u, new_size)
   vᵢ = resize!(v, new_size)
 
@@ -29,121 +29,113 @@ presented in
 Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
 Solving Ordinary Differential Equations I: Nonstiff Problems
 """
-function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=0.0, 
-  max_dt=1e-1, atol=1e-9, rtol=1e-7, max_order=12, qmax=5, qmin=1//5, γ=9//10,
-  stop=()->false, update_time! =(x...)->nothing, update_line! =(x...)->nothing,
-  st_ch=nothing, kernel_vert=nothing, kernel_diag=nothing, v=nothing)
+function kbsolve(f_vert, f_diag, u, t0, tmax;
+  update_time=(x...)->nothing,
+  f_line=nothing, update_line=(x...)->nothing,
+  v=nothing, kernel_vert=nothing, kernel_diag=nothing,
+  kwargs...)
   
-  # Sanity checks
-  if max_order < 1 || max_order > 12
-    error("max_order must be between 1 and 12")
-  end
+  opts = VCABMOptions(;kwargs...)  
 
-  # Support for t0 being a vector of times
-  if isempty(size(t0))
-    t0 = [t0]
-  end
-
-  # TODO
-  if last(t0) > tmax
-    error("Only t0 < tmax supported")
-  end
-
-  # Internal representation of (`u`, `v`)
-  if isnothing(f_line)
-    u = (u,)
-  end
+  @assert t0 < tmax "Only t0 < tmax supported"
 
   # Initialize state and caches
-  state, caches = !isnothing(st_ch) ? st_ch : begin
+  state, caches = begin
     if isnothing(f_line)
+      u = (u,) # Internal representation of `u` is (`u`, `v`)
       cache_line = nothing
     else
       u0 = [x[1] for x in u[2]] # Extract solution at (t0)
-      update_line!(t0, 1)
-      cache_line = VCABMCache{eltype(t0)}(max_order,u0,f_line(u...,t0,1))
+      update_line([t0], 1)
+      cache_line = VCABMCache{typeof(t0)}(opts.kmax,u0,f_line(u...,[t0],1))
     end
 
     u0 = [x[1,1] for x in u[1]] # Extract solution at (t0,t0)
-    update_time!(t0, 1, 1)
-    cache_vert = VCABMCache{eltype(t0)}(max_order,u0,f_vert(u...,t0,1,1))
-    cache_diag = VCABMCache{eltype(t0)}(max_order,u0,f_diag(u...,t0,1))
+    update_time([t0], 1, 1)
+    cache_vert = VCABMCache{typeof(t0)}(opts.kmax,u0,f_vert(u...,[t0],1,1))
+    cache_diag = VCABMCache{typeof(t0)}(opts.kmax,u0,f_diag(u...,[t0],1))
 
     # Resize time-length of the functions `u` and `v`
     foreach(u -> resize!.(u, last(size(last(u))) + 50), u)
 
     # Calculate initial dt
-    if iszero(init_dt)
+    if iszero(opts.dtini)
       f′ = (u_next, t_next) -> begin
         foreach((u,u′) -> u[2,1] = u′, u[1], u_next)
-        update_time!([t0; t_next], 2, 1)
+        update_time([t0; t_next], 2, 1)
         f_vert(u..., [t0; t_next], 2, 1)
       end
-      init_dt = initial_step(f′,u0,last(t0),rtol,atol; f0=cache_vert.f_prev)
+      opts.dtini = initial_step(f′,u0,last(t0),opts.rtol,opts.atol; f0=cache_vert.f_prev)
     end
 
-    VCABMState(u,t0,init_dt), KBCaches(cache_vert,cache_diag,cache_line)    
+    VCABMState(u,v,[t0,t0+opts.dtini]), KBCaches(cache_vert,cache_diag,cache_line)    
   end
+
+  kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time, 
+    f_line, update_line, kernel_vert, kernel_diag)
+end
+
+function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time, 
+  f_line, update_line, kernel_vert, kernel_diag)
 
   # This will allow us to have a unified use of f_vert and f_diag
-  function f(t1, t2, predict::Bool)
-    if isequal(t1, t2)
-      # if predict
-      #   v′ = volterra_predict(t -> kernel_diag(state.t,t1,t), state, caches.master)
-      # else
-      #   v′ = volterra_correct()
-      # end
-      # foreach((v,v′) -> v[t,t′] = v′, v, v′)
-      f_diag(state.u..., state.t, t1)
-    else
-      # if predict
-      #   v′ = volterra_predict(t -> kernel_vert(state.t,t1,t2,t), state, caches.master)
-      # else
-      #   v′ = volterra_correct()
-      # end
-      # foreach((v,v′) -> v[t,t′] = v′, v, v′)
-      return f_vert(state.u..., state.t, t1, t2)
-  end
+  f(t1,t2) = isequal(t1, t2) ? f_diag(state.u..., state.t, t1) : f_vert(state.u..., state.t, t1, t2)
+  # function f(t1, t2, predict::Bool)
+  #   kernel(t) = isequal(t1, t2) ? t -> kernel_diag(state.t,t1,t) : t -> kernel_vert(state.t,t1,t2,t)
+    
+  #   if predict
+  #     v′ = volterra_predict(kernel, state, caches.master)
+  #   else
+  #     v_next = [v[t,t′] for x in v]
+  #     v′ = volterra_correct(v_next, kernel, caches.master)
+  #   end
+
+  #   foreach((v,v′) -> v[t,t′] = v′, v, v′)
+  #   return isequal(t1, t2) ? f_diag(state.u..., state.t, t1) : f_vert(state.u..., state.t, t1, t2)
+  # end
 
   # The adaptivity of the integration is controlled by a master cache
-  @do_while timeloop!(state,caches.master,tmax,max_dt,qmax,qmin,γ,stop) begin
-    @assert length(caches.vert) + 1 == length(state.t)
+  @do_while timeloop!(state,caches.master,tmax,opts) begin
+    # Current time index
+    t = length(state.t)
+
+    # We are stepping from `t-1` to `t` so we should have `t-1` caches
+    @assert length(caches.vert) + 1 == t
 
     # Resize solution if necessary
-    if (s = last(size(last(state.u[1])))) == length(state.t)
+    if (s = last(size(last(state.u[1])))) == t
       s += min(max(ceil(Int, (tmax - state.t[end]) / state.dt), 10), 20)
       foreach(u -> resize!.(u, s), state.u)
     end
 
-    # Current time index
-    t = length(state.t)
-
-    # Predictor & update all times
+    # Predictor for the 2-time functions
     for (t′, cache) in enumerate([caches.vert; caches.diag])
       u_next = predict!(state, cache)
-      foreach((u,u′) -> u[t,t′] = u′, state.u[1], u_next)
-    end
-    for (t′, _) in enumerate([caches.vert; caches.diag])
-      update_time!(state.t, t, t′)
+      foreach((u,u′) -> u[t,t′] = u′, state.u[1], u_next); update_time(state.t, t, t′)
     end
 
-    # Predictor + corrector on 1-time function
+    # Predictor, corrector and error estimation for the 1-time functions
     if !isnothing(f_line) 
       u_next = predict!(state, caches.line)
-      foreach((u,u′) -> u[t] = u′, state.u[2], u_next); update_line!(state.t, t)
+      foreach((u,u′) -> u[t] = u′, state.u[2], u_next); update_line(state.t, t)
+
       u_next = correct!(u_next, f_line(state.u..., state.t, t), caches.line)
-      foreach((u,u′) -> u[t] = u′, state.u[2], u_next); update_line!(state.t, t)
-      estimate_error!(u_next, caches.line, atol, rtol)
+      foreach((u,u′) -> u[t] = u′, state.u[2], u_next); update_line(state.t, t)
+
+      error_k = estimate_error!(u_next, caches.line, opts.atol, opts.rtol)
+      if error_k > caches.master.error_k
+        caches.master = caches.line
+      end
     end
 
-    # Corrector and error estimation
+    # Corrector and error estimation for the 2-time functions
     for (t′, cache) in enumerate([caches.vert; caches.diag])
       u_next = [x[t,t′] for x in state.u[1]] # saved in state.u[1]
       u_next = correct!(u_next, f(t,t′), cache)
-      foreach((u,u′) -> u[t,t′] = u′, state.u[1], u_next); update_time!(state.t, t, t′)
+      foreach((u,u′) -> u[t,t′] = u′, state.u[1], u_next); update_time(state.t, t, t′)
 
       # Error estimation
-      error_k = estimate_error!(u_next, cache, atol, rtol)
+      error_k = estimate_error!(u_next, cache, opts.atol, opts.rtol)
 
       # Fail step: Section III.7 Eq. (7.4)
       if error_k > one(error_k)
@@ -152,19 +144,8 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=0.0,
       end
     end
 
-    if !isnothing(f_line)
-      if caches.line.error_k > caches.master.error_k
-        caches.master = caches.line
-      end
-    end
-
     # If the step is accepted
     if caches.master.error_k <= one(caches.master.error_k)
-      # Update all times
-      for (t′, _) in enumerate([caches.vert; caches.diag])
-        update_time!(state.t, t, t′)
-      end
-
       # Set the cache with biggest error as the master cache
       max_error = (0.0, 1)
       for (t′, cache) in enumerate([caches.vert; caches.diag])
@@ -177,7 +158,7 @@ function kbsolve(f_vert, f_diag, u, t0, tmax; f_line=nothing, init_dt=0.0,
 
       # Adjust the master cache's order for the next time-step
       u_next = [x[t,t′] for x in state.u[1]]
-      adjust_order!(u_next, f(t,t′), state, caches.master, max_order, atol, rtol)
+      adjust_order!(u_next, f(t,t′), state, caches.master, opts.kmax, opts.atol, opts.rtol)
 
       # Update all caches
       update_caches!(caches, state, f_vert, f_diag, f_line)
@@ -244,6 +225,32 @@ function update_caches!(caches, state::VCABMState, f_vert, f_diag, f_line)
   @assert length(caches.vert) == length(state.t)
 end
 
+function timeloop!(state,cache,tmax,opts)
+  @unpack k, error_k= cache
+
+  if cache.error_k > one(cache.error_k)
+    pop!(state.t) # remove t_prev
+  end
+
+  # II.4 Automatic Step Size Control, Eq. (4.13)
+  q = max(inv(opts.qmax), min(inv(opts.qmin), error_k^(1/(k+1)) / opts.γ))
+  dt = min((state.t[end] - state.t[end-1]) / q, opts.dtmax)
+
+  # Don't go over tmax
+  if state.t[end] + dt > tmax
+    dt = tmax - state.t[end]
+  end
+
+  if opts.stop()
+    return false
+  elseif state.t[end] < tmax
+    push!(state.t, state.t[end] + dt) # add t_next
+    return true
+  else
+    return false
+  end 
+end
+
 mutable struct KBCaches{T,F}
   vert::Vector{VCABMCache{T,F}}
   diag::VCABMCache{T,F}
@@ -253,30 +260,4 @@ mutable struct KBCaches{T,F}
   function KBCaches(vert1::VCABMCache{T,F}, diag, line) where {T,F}
     new{T,F}([vert1,], diag, line, diag)
   end
-end
-
-function timeloop!(state,cache,tmax,max_dt,qmax,qmin,γ,stop)
-  @unpack k, error_k= cache
-
-  if cache.error_k > one(cache.error_k)
-    pop!(state.t) # remove t_prev
-  end
-
-  # II.4 Automatic Step Size Control, Eq. (4.13)
-  q = max(inv(qmax), min(inv(qmin), error_k^(1/(k+1)) / γ))
-  state.dt = min(state.dt / q, max_dt)
-
-  # Don't go over tmax
-  if state.t[end] + state.dt > tmax
-    state.dt = tmax - state.t[end]
-  end
-
-  if stop()
-    return false
-  elseif state.t[end] < tmax
-    push!(state.t, state.t[end] + state.dt) # add t_next
-    return true
-  else
-    return false
-  end 
 end

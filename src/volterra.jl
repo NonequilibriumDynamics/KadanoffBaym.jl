@@ -18,5 +18,11 @@ function volterra_predict(kernel, state, cache)
   return cache.u_prev
 end
 
-function volterra_correct(kernel, state, cache)
+function volterra_correct(v_next, kernel, cache)
+  # mutation tricks
+  times = copy(state.t)
+
+  for ti in 1:length(state.t)
+    state.t = times[1:ti]
+  end
 end
