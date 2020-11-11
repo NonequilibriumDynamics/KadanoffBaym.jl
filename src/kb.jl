@@ -13,26 +13,39 @@ And if 1-time functions `v` are present
   f_diag(u, v, t_grid, t1)
   f_line(u, v, t_grid, t1)
 
-The initial condition `u` should be an array or tuple of `uᵢⱼ`s and
-if 1-time functions `vᵢ` are present it should be of the form (`uᵢⱼ`, `vᵢ`).
+## Parameters
+  - `RHS` of the differential equation du/dt1 (`f_vert`)
+  - `RHS` of the differential equation (d/dt1 + d/dt2)u (`f_diag`)
+  - Initial value for the 2-point functions (`u0`)
 
-It is also mandatory that both `u`s and can `v`s can be **indexed** by 2-time 
-and 1-time arguments, respectively, and can be `resize!`d at will
-  uᵢⱼ = resize!(u, new_size)
-  vᵢ = resize!(v, new_size)
+## Optional keyword parameters
+  - For repeated operations, the user can call
 
-Unlike standard ODE solvers, `kbsolve` is designed to mutate the initial 
-condition `u`.
+  If 1-time functions are present:
+  - Initial value for the 1-point functions (`l0`)
+  - 
+  - 
 
-The Kadanoff-Baym timestepper is a 2-time generalization of the VCABM stepper 
-presented in
-Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
-Solving Ordinary Differential Equations I: Nonstiff Problems
+  If higher precision Volterra integrals are needed
+  - Initial value for the 2-time volterra integrals (`v0`)
+  - The kernel of the `RHS` of du/dt1 (`kernel_vert`)
+  - The kernel of the `RHS` of (d/dt1 + d/dt2)u (`kenerl_diag`)
+
+## Notes
+  - It is required that both `u`s and can `v`s can be **indexed** by 2-time 
+    and 1-time arguments, respectively, and can be `resize!`d at will
+    uᵢⱼ = resize!(u, new_size)
+    vᵢ = resize!(v, new_size)
+  - Unlike standard ODE solvers, `kbsolve` is designed to mutate the initial 
+    condition `u`
+  - The Kadanoff-Baym timestepper is a 2-time generalization of the VCABM stepper 
+    presented in Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
+    Solving Ordinary Differential Equations I: Nonstiff Problems
 """
-function kbsolve(f_vert, f_diag, u, t0, tmax;
+function kbsolve(f_vert, f_diag, u0, (t0, tmax);
   update_time=(x...)->nothing,
-  f_line=nothing, update_line=(x...)->nothing,
-  v=nothing, kernel_vert=nothing, kernel_diag=nothing,
+  l0=nothing, f_line=nothing, update_line=(x...)->nothing,
+  v0=nothing, kernel_vert=nothing, kernel_diag=nothing,
   kwargs...)
   
   opts = VCABMOptions(; kwargs...)  
@@ -42,18 +55,19 @@ function kbsolve(f_vert, f_diag, u, t0, tmax;
   # Initialize state and caches
   state, caches = begin
     if isnothing(f_line)
-      u = (u, ) # Internal representation of `u` is (`u`, `v`)
+      u = (u0,) # Internal representation of `u` is (`u`, `v`)
       cache_line = nothing
     else
-      u0 = [x[1] for x in u[2]] # Extract solution at (t0)
+      u = (u0, l0)
+      l0_ = [x[1] for x in u[2]] # Extract solution at (t0)
       update_line([t0], 1)
-      cache_line = VCABMCache{typeof(t0)}(opts.kmax,u0,f_line(u...,[t0],1))
+      cache_line = VCABMCache{typeof(t0)}(opts.kmax,l0_,f_line(u...,[t0],1))
     end
 
-    u0 = [x[1,1] for x in u[1]] # Extract solution at (t0,t0)
+    u0_ = [x[1,1] for x in u[1]] # Extract solution at (t0,t0)
     update_time([t0], 1, 1)
-    cache_vert = VCABMCache{typeof(t0)}(opts.kmax,u0,f_vert(u...,[t0],1,1))
-    cache_diag = VCABMCache{typeof(t0)}(opts.kmax,u0,f_diag(u...,[t0],1))
+    cache_vert = VCABMCache{typeof(t0)}(opts.kmax,u0_,f_vert(u...,[t0],1,1))
+    cache_diag = VCABMCache{typeof(t0)}(opts.kmax,u0_,f_diag(u...,[t0],1))
 
     # Resize time-length of the functions `u` and `v`
     foreach(u -> resize!.(u, last(size(last(u))) + 50), u)
@@ -65,10 +79,12 @@ function kbsolve(f_vert, f_diag, u, t0, tmax;
         update_time([t0; t_next], 2, 1)
         f_vert(u..., [t0; t_next], 2, 1)
       end
-      opts.dtini = initial_step(f′,u0,last(t0),opts.rtol,opts.atol; f0=cache_vert.f_prev)
+      dt = initial_step(f′,u0_,t0,1,opts.atol,opts.rtol; f0=cache_vert.f_prev)
+    else
+      dt = opts.dtini
     end
 
-    VCABMState(u,v,[t0,t0+opts.dtini]), KBCaches(cache_vert,cache_diag,cache_line)    
+    VCABMState(u,v0,[t0,t0+dt]), KBCaches(cache_vert,cache_diag,cache_line)    
   end
 
   kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time, 
