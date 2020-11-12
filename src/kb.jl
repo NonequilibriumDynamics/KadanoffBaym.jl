@@ -77,6 +77,7 @@ function kbsolve(f_vert, f_diag, u0, (t0, tmax);
       f′ = (u_next, t_next) -> begin
         foreach((u,u′) -> u[2,1] = u′, u[1], u_next)
         update_time([t0; t_next], 2, 1)
+        if !isnothing(f_line) update_line([t0; t_next], 2) end
         f_vert(u..., [t0; t_next], 2, 1)
       end
       dt = initial_step(f′,u0_,t0,1,opts.atol,opts.rtol; f0=cache_vert.f_prev)
@@ -124,58 +125,59 @@ function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time,
       foreach(u -> resize!.(u, s), state.u)
     end
 
-    # Predictor for the 1-time functions
-    if !isnothing(f_line) 
-      u_next = predict!(state, caches.line)
-      foreach((u,u′) -> u[t] = u′, state.u[2], u_next); update_line(state.t, t)
-    end
-
-    # Reset master cache
-    caches.master.error_k = 0.0
-
-    # Predictor, corrector and error estimation for the 2-time functions
+    # Predictor for the 2-time functions
     for (t′, cache) in enumerate([caches.vert; caches.diag])
       u_next = predict!(state, cache)
       foreach((u,u′) -> u[t,t′] = u′, state.u[1], u_next); update_time(state.t, t, t′)
-      u_next = correct!(u_next, f(t,t′), cache)
-      foreach((u,u′) -> u[t,t′] = u′, state.u[1], u_next); update_time(state.t, t, t′)
+    end
 
-      # Error estimation
-      error_k = estimate_error!(u_next, cache, opts.atol, opts.rtol)
+    # Predictor, corrector and error estimation for the 1-time functions
+    if !isnothing(f_line) 
+      u_next = predict!(state, caches.line)
+      foreach((u,u′) -> u[t] = u′, state.u[2], u_next); update_line(state.t, t)
 
-      # Set the cache with biggest error as the master cache
-      if error_k > caches.master.error_k
-        caches.master = cache
+      u_next = correct!(u_next, f_line(state.u..., state.t, t), caches.line)
+      foreach((u,u′) -> u[t] = u′, state.u[2], u_next); update_line(state.t, t)
+
+      caches.line.error_k = estimate_error!(u_next, caches.line, opts.atol, opts.rtol)
+    end
+
+    # Corrector and error estimation for the 2-time functions
+    if !isnothing(f_line) && caches.line.error_k > one(caches.line.error_k)
+      caches.master = caches.line
+    else
+      for (t′, cache) in enumerate([caches.vert; caches.diag])
+        u_next = [x[t,t′] for x in state.u[1]] # saved in state.u[1]
+        u_next = correct!(u_next, f(t,t′), cache)
+        foreach((u,u′) -> u[t,t′] = u′, state.u[1], u_next); update_time(state.t, t, t′)
+
+        # Error estimation
+        cache.error_k = estimate_error!(u_next, cache, opts.atol, opts.rtol)
 
         # Fail step: Section III.7 Eq. (7.4)
-        if error_k > one(error_k)
+        if cache.error_k > one(cache.error_k)
+          caches.master = cache
           break
         end
       end
     end
 
-    # Corrector and error estimation for the 1-time functions
-    if !isnothing(f_line) 
-      u_next = [x[t] for x in state.u[2]]
-      u_next = correct!(u_next, f_line(state.u..., state.t, t), caches.line)
-      foreach((u,u′) -> u[t] = u′, state.u[2], u_next); update_line(state.t, t)
-
-      # error_k = estimate_error!(u_next, caches.line, opts.atol, opts.rtol)
-      # if error_k > caches.master.error_k
-      #   caches.master = caches.line
-      # end
-    end
-
     # If the step is accepted
     if caches.master.error_k <= one(caches.master.error_k)
-      # if caches.master === caches.line
-      #   u_next = [x[t] for x in state.u[2]]
-      #   adjust_order!(u_next, f_line(state.u..., state.t, t), state, caches.master, opts.kmax, opts.atol, opts.rtol)
-      # else
-        t′ = findfirst(x -> x===caches.master, [caches.vert; caches.diag])
+      # Set the cache with highest error as the master cache
+      # NOTE: this cache is not calculated before since 
+      t′, caches.master = reduce((x,y) -> x[2].error_k > y[2].error_k ? x : y,
+       enumerate([caches.vert; caches.diag]))
+
+      # Adjust the master cache's order for the next time-step
+      if !isnothing(f_line) && caches.line.error_k > caches.master.error_k
+        caches.master = caches.line
+        u_next = [x[t] for x in state.u[2]]
+        adjust_order!(u_next, f_line(state.u..., state.t, t), state, caches.master, opts.kmax, opts.atol, opts.rtol)
+      else
         u_next = [x[t,t′] for x in state.u[1]]
         adjust_order!(u_next, f(t,t′), state, caches.master, opts.kmax, opts.atol, opts.rtol)
-      # end
+      end
 
       # Update all caches
       update_caches!(caches, state, f_vert, f_diag, f_line)
