@@ -245,27 +245,19 @@ end
 function timeloop!(state,cache,tmax,opts)
   @unpack k, error_k= cache
 
-  if cache.error_k > one(cache.error_k)
-    pop!(state.t) # remove t_prev
-  end
-
   # II.4 Automatic Step Size Control, Eq. (4.13)
   q = max(inv(opts.qmax), min(inv(opts.qmin), error_k^(1/(k+1)) / opts.γ))
   dt = min((state.t[end] - state.t[end-1]) / q, opts.dtmax)
 
-  # Don't go over tmax
-  if state.t[end] + dt > tmax
-    dt = tmax - state.t[end]
+  if cache.error_k > one(cache.error_k)
+    pop!(state.t) # remove t_prev
   end
 
-  if opts.stop()
-    return false
-  elseif state.t[end] < tmax
-    push!(state.t, state.t[end] + dt) # add t_next
-    return true
-  else
-    return false
-  end 
+  # Don't go over tmax
+  if last(state.t) + dt > tmax
+    dt = tmax - last(state.t)
+  end
+  return !iszero(dt) && !opts.stop() && (push!(state.t, last(state.t) + dt); true)
 end
 
 mutable struct KBCaches{T,F}
