@@ -4,7 +4,7 @@ using Base: @propagate_inbounds, front
 
 using LinearAlgebra
 using MuladdMacro
-using Parameters
+using Parameters: @unpack
 using Reexport
 @reexport using EllipsisNotation
 using FFTW, NFFT

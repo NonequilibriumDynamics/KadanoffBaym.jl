@@ -187,12 +187,13 @@ function Base.resize!(A::GreaterOrLesser, t::Vararg{Int,2})
   #   newdata = fill(eltype(A)(undef,t...,size(first(A))...))
   # else
   newdata = typeof(A)(zeros(eltype(A),front2(size(A))...,t...))
+  replace!(newdata.data, 0.0=>NaN)
   # end
 
   T = min(last(size(A)), last(t))
 
-  for t=1:T, t′=t:T
-    @views newdata[t,t′] = A[t,t′]
+  for t=1:T, t′=1:T
+    newdata.data[t,t′] = A.data[t,t′]
   end
 
   A.data = newdata.data

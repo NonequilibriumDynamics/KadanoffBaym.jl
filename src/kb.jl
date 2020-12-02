@@ -50,42 +50,47 @@ function kbsolve(f_vert, f_diag, u0, (t0, tmax);
   
   opts = VCABMOptions(; kwargs...)  
 
-  @assert t0 < tmax "Only t0 < tmax supported"
+  # Support for initial time-grid
+  if isempty(size(t0))
+    t0 = [t0]
+  end
+
+  @assert last(t0) < tmax "Only t0 < tmax supported"
 
   # Initialize state and caches
   state, caches = begin
+    t = length(t0)
+
     if isnothing(f_line)
       u = (u0,) # Internal representation of `u` is (`u`, `v`)
       cache_line = nothing
     else
       u = (u0, l0)
-      l0_ = [x[1] for x in u[2]] # Extract solution at (t0)
-      update_line([t0], 1)
-      cache_line = VCABMCache{typeof(t0)}(opts.kmax,l0_,f_line(u...,[t0],1))
+      update_line(t0, t)
+      cache_line = VCABMCache{eltype(t0)}(opts.kmax, [x[1] for x in u[2]], f_line(u...,t0,t))
     end
 
-    u0_ = [x[1,1] for x in u[1]] # Extract solution at (t0,t0)
-    update_time([t0], 1, 1)
-    cache_vert = VCABMCache{typeof(t0)}(opts.kmax,u0_,f_vert(u...,[t0],1,1))
-    cache_diag = VCABMCache{typeof(t0)}(opts.kmax,u0_,f_diag(u...,[t0],1))
+    caches_vert = map(eachindex(t0)) do t′
+      update_time(t0, t, t′)
+      VCABMCache{eltype(t0)}(opts.kmax, [x[t,t′] for x in u[1]], f_vert(u...,t0,t,t′))
+    end
+    cache_diag = VCABMCache{eltype(t0)}(opts.kmax, [x[t,t] for x in u[1]], f_diag(u...,t0,t))
 
     # Resize time-length of the functions `u` and `v`
     foreach(u -> resize!.(u, last(size(last(u))) + 50), u)
 
     # Calculate initial dt
-    if iszero(opts.dtini)
-      f′ = (u_next, t_next) -> begin
-        foreach((u,u′) -> u[2,1] = u′, u[1], u_next)
-        update_time([t0; t_next], 2, 1)
-        if !isnothing(f_line) update_line([t0; t_next], 2) end
-        f_vert(u..., [t0; t_next], 2, 1)
-      end
-      dt = initial_step(f′,u0_,t0,1,opts.atol,opts.rtol; f0=cache_vert.f_prev)
-    else
+    # if iszero(opts.dtini)
+    #   dt = initial_step(caches_vert[1].u_prev,last(t0),1,opts.atol,opts.rtol;f0=caches_vert[1].f_prev) do x...
+    #     foreach((u,u′) -> u[t+1,1] = u′, u[1], x[1]); update_time([t0; x[2]], t+1, 1)
+    #     update_line([t0; x[2]], t+1)
+    #     f_vert(u..., [t0; x[2]], t+1, 1)
+    #   end
+    # else
       dt = opts.dtini
-    end
+    # end
 
-    VCABMState(u,v0,[t0,t0+dt]), KBCaches(cache_vert,cache_diag,cache_line)    
+    VCABMState(u,v0,[t0; last(t0)+dt]), KBCaches{eltype(t0),typeof(cache_diag.u_prev)}(caches_vert, cache_diag, cache_line, cache_diag)
   end
 
   kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time, 
@@ -267,8 +272,4 @@ mutable struct KBCaches{T,F}
   diag::VCABMCache{T,F}
   line::Union{Nothing, VCABMCache}
   master::VCABMCache # basically a reference to one of the other caches
-
-  function KBCaches(vert1::VCABMCache{T,F}, diag, line) where {T,F}
-    new{T,F}([vert1,], diag, line, diag)
-  end
 end
