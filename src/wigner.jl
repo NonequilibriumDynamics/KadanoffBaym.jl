@@ -11,7 +11,6 @@ Wigner function tells us (roughly) how the spectral density changes in time.
 ## Parameters
   - 2-point correlator (`x`)
   - Time-grid (`ts`): Defaults to a `UnitRange` time-grid
-  - Number of ω points (`Nf`): Number of frequencies. Defaults to `size(x,1)`.
   - Fourier opt (`fourier`): Whether to Fourier transform. Defaults to `true`
 
 ## Returns
@@ -21,7 +20,7 @@ Wigner function tells us (roughly) how the spectral density changes in time.
 https://en.wikipedia.org/wiki/Wigner_distribution_function
 http://tftb.nongnu.org
 """
-function wigner_transform(x; ts=1:size(x,1), Nf=size(x,1), fourier=true)
+function wigner_transform(x; ts=1:size(x,1), fourier=true)
   LinearAlgebra.checksquare(x)
 
   Nt = size(x, 1)
@@ -54,22 +53,20 @@ function wigner_transform(x; ts=1:size(x,1), Nf=size(x,1), fourier=true)
     end
   end
 
+  x′ = circshift(x′, (Nt ÷ 2, 0))
+  
   if !fourier 
-    return x′, (ts, ts) #(ts_equidistant, ts_equidistant)
+    return x′, (ts - reverse(ts), ts)
   else
-    ωs = fftfreq(Nf, 1.0)
-    x′ = circshift(x′, -(isodd(Nt) ? Nt÷2 + 1 : Nt÷2))
-    x′ = nfft(NFFTPlan(ωs, 1, size(x′)), x′)
-    # x′ = mapslices(x -> nufft2(x, ωs, 1e-8), x′, dims=1)
-    # x′ = fft(x′, [1])
-    
     # Because the FFT calculates the transform as y_k = \sum_j e^{-2pi i j k/n}
     # from j=0 to j=n-1, we need to transform this into our time and frequency
-    # units, which ends up scaling the frequencies `ωs` by (-2pi / dt). Note that
-    # dt = 2x the dt of `ts` because τ runs from -t to t.
-    ωs *= -pi / (ts[2] - ts[1])
-
+    # units, which ends up scaling the frequencies `ωs` by (-2pi / dτ).
+    τs = ts - reverse(ts)
+    ωs = fftfreq(Nt, -2pi / (τs[2] - τs[1]))
     is = sortperm(ωs)
+
+    x′ = mapslices(x -> (τs[2] - τs[1]) * fft(x) .* exp.(1.0im * τs[1] .* ωs), x′, dims=1)
+    
     return 1.0im * x′[is,:], (ωs[is], ts)
   end
 end

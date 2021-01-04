@@ -7,8 +7,7 @@ using MuladdMacro
 using Parameters: @unpack
 using Reexport
 @reexport using EllipsisNotation
-using FFTW, NFFT
-# using FastTransforms: fftfreq, nufft2
+using FFTW
 
 export GreenFunction, Lesser, Greater, MixedLesser, MixedGreater
 export kbsolve
