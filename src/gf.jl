@@ -187,7 +187,7 @@ function Base.resize!(A::GreaterOrLesser, t::Vararg{Int,2})
   #   newdata = fill(eltype(A)(undef,t...,size(first(A))...))
   # else
   newdata = typeof(A)(zeros(eltype(A),front2(size(A))...,t...))
-  replace!(newdata.data, 0.0=>NaN)
+  # replace!(newdata.data, 0.0=>NaN)
   # end
 
   T = min(last(size(A)), last(t))

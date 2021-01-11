@@ -31,6 +31,8 @@ mutable struct VCABMState{T,U,V}
   end
 end
 
+# Part of the following code is licensed under the MIT "Expact" Lience, 
+# from https://github.com/SciML/OrdinaryDiffEq.jl
 mutable struct VCABMCache{T,U}
   u_prev::U
   f_prev::U
