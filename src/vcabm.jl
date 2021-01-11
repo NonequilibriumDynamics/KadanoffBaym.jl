@@ -1,14 +1,38 @@
-# Holds the information about the integration
-mutable struct VCABMState{T,U}
-  u::U
-  t::Vector{T}
-  dt::T
+struct VCABMOptions
+  atol::Number
+  rtol::Number
+  dtini::Number
+  dtmax::Number
+  qmax::Number
+  qmin::Number
+  γ::Number
+  kmax::Number
+  stop::Function
+end
 
-  function VCABMState(u::U, t0::Vector{T}, dt::T) where {T,U}
-    new{T,U}(u,[t0; last(t0)+dt],dt)
+function VCABMOptions(; atol=1e-8, rtol=1e-6, dtini=0.0, dtmax=1e-1, qmax=5, 
+  qmin=1//5, γ=9//10, kmax=12, stop=()->false)
+
+  if kmax < 1 || kmax > 12
+    error("kmax must be between 1 and 12")
+  end
+
+  return VCABMOptions(atol, rtol, dtini, dtmax, qmax, qmin, γ, kmax, stop)
+end
+
+# Holds the information about the integration
+mutable struct VCABMState{T,U,V}
+  u::U
+  v::V
+  t::T
+
+  function VCABMState(u::U, v::V, t::T) where {T,U,V}
+    new{T,U,V}(u, v, t)
   end
 end
 
+# Part of the following code is licensed under the MIT "Expact" Lience, 
+# from https://github.com/SciML/OrdinaryDiffEq.jl
 mutable struct VCABMCache{T,U}
   u_prev::U
   f_prev::U
@@ -30,28 +54,37 @@ mutable struct VCABMCache{T,U}
   end
 end
 
-# Explicit Adams: Section III.5 Eq. (5.7)
+# Explicit Adams: Section III.5 Eq. (5.5)
 function predict!(state, cache)
   @inbounds begin
     @unpack u_prev,g,ϕstar_n,k = cache
     ϕ_and_ϕstar!(state, cache, k+1)
     u_next = muladd(g[1], ϕstar_n[1], u_prev)
-    for i = 2:k-1
+    for i = 2:k-1 # NOTE: Check this (-1)
       u_next = muladd(g[i], ϕstar_n[i], u_next)
     end
   end
   u_next
 end
 
-function correct!(u_next, du_np1, cache)
+# Implicit Adams: Section III.5 Eq (5.7)
+function correct!(u_next, du, cache)
+  @unpack g,ϕ_np1,k = cache
   @inbounds begin
-    @unpack g,ϕ_np1,k = cache
-
-    # Implicit corrector
-    ϕ_np1!(cache, du_np1, k+1)
+    ϕ_np1!(cache, du, k+1)
     u_next = muladd(g[k], ϕ_np1[k], u_next)
   end
   u_next
+end
+
+function ϕ_np1!(cache, du, k)
+  @unpack ϕ_np1, ϕstar_n = cache
+  @inbounds begin
+    ϕ_np1[1] = du
+    for i = 2:k
+      ϕ_np1[i] = ϕ_np1[i-1] - ϕstar_n[i-1]
+    end
+  end
 end
 
 # Calculate error: Section III.7 Eq. (7.3)
@@ -126,21 +159,12 @@ function ϕ_and_ϕstar!(state, cache, k)
     end
   end
 end
-function ϕ_np1!(cache, du_np1, k)
-  @inbounds begin
-    @unpack ϕ_np1, ϕstar_n = cache
-    ϕ_np1[1] = du_np1
-    for i = 2:k
-      ϕ_np1[i] = ϕ_np1[i-1] - ϕstar_n[i-1]
-    end
-  end
-end
 
 # Coefficients for the implicit Adams methods
 const γstar = [1,-1/2,-1/12,-1/24,-19/720,-3/160,-863/60480,-275/24192,-33953/3628800,-0.00789255,-0.00678585,-0.00592406,-0.00523669,-0.0046775,-0.00421495,-0.0038269]
 
 # Error estimation and norm: Section II.4 Eq. (4.11)
-@inline function error_estimate(ũ::Array, u₀::Array, u₁::Array, atol::Real, rtol::Real)
+@inline function error_estimate(ũ::AbstractArray, u₀::AbstractArray, u₁::AbstractArray, atol::Real, rtol::Real)
   err = similar(ũ)
   @. err = error_estimate(ũ, u₀, u₁, atol, rtol)
   err
@@ -151,16 +175,16 @@ end
 @inline norm(u) = LinearAlgebra.norm(u) / sqrt(length(u))
 
 # Starting Step Size: Section II.4
-function initial_step(f, u₀, t₀, k, atol, rtol; f₀=f(u₀, t₀))
-  sc = atol + norm(u₀) * rtol
-  d₀ = norm(u₀ ./ sc)
-  d₁ = norm(f₀ ./ sc)
+function initial_step(f, u0, t0, k, atol, rtol; f0=f(u0, t0))
+  sc = atol + rtol * norm(u0) 
+  d0 = norm(u0 ./ sc)
+  d1 = norm(f0 ./ sc)
 
-  dt₀ = min(d₀,d₁) < 1e-5 ? 1e-6 : 1e-2 * d₀/d₁
+  dt0 = min(d0,d1) < 1e-5 ? 1e-6 : 1e-2 * d0/d1
   
-  f₁ = f(muladd(dt₀, f₀, u₀), t₀+dt₀)
-  d₂ = norm((f₁ - f₀) ./ sc) / dt₀
+  f1 = f(muladd(dt0, f0, u0), t0+dt0)
+  d2 = norm((f1 - f0) ./ sc) / dt0
   
-  dt₁ = max(d₁,d₂) <= 1e-15 ? max(1e-6, 1e-3 * dt₀) : (1e-2 / max(d₁,d₂))^(1/(k+1))
-  return min(dt₁, 1e2 * dt₀) * 1e-3
+  dt1 = max(d1,d2) <= 1e-15 ? max(1e-6, 1e-3 * dt0) : (1e-2 / max(d1,d2))^(1/(k+1))
+  return min(dt1, 1e2 * dt0)
 end
