@@ -5,11 +5,10 @@ using Base: @propagate_inbounds, front
 using LinearAlgebra
 using MuladdMacro
 using Parameters: @unpack
-using Reexport
-@reexport using EllipsisNotation
+using EllipsisNotation
 using FFTW
 
-export GreenFunction, Lesser, Greater, MixedLesser, MixedGreater
+export GreenFunction, Classical, Lesser, Greater, MixedLesser, MixedGreater
 export kbsolve
 export wigner_transform
 

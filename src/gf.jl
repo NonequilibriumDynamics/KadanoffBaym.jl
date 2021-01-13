@@ -1,6 +1,10 @@
 abstract type GreenFunctionType end
 
 """
+"""
+struct Classical <: GreenFunctionType end
+
+"""
 Defined as
     G^<(t,t') = -i < a^{\\dagger}(t') a(t) > for t ≺ t'
 """
@@ -23,10 +27,6 @@ Defined as
     G^<(t,iτ) = -i < a(t)a^{\\dagger}(iτ)  > for iτ ≺ t
 """
 struct MixedGreater <: GreenFunctionType end
-
-"""
-"""
-struct Classical <: GreenFunctionType end
 
 """
     GreenFunction
@@ -181,8 +181,8 @@ function Base.show(io::IO, x::GreenFunction)
   end
 end
 
-Base.resize!(A::GreaterOrLesser, t::Int) = Base.resize!(A, t, t)
-function Base.resize!(A::GreaterOrLesser, t::Vararg{Int,2})
+Base.resize!(A::GreenFunction, t::Int) = Base.resize!(A, t, t)
+function Base.resize!(A::GreenFunction, t::Vararg{Int,2})
   # if eltype(A) <: AbstractArray
   #   newdata = fill(eltype(A)(undef,t...,size(first(A))...))
   # else
@@ -193,7 +193,7 @@ function Base.resize!(A::GreaterOrLesser, t::Vararg{Int,2})
   T = min(last(size(A)), last(t))
 
   for t=1:T, t′=1:T
-    newdata.data[t,t′] = A.data[t,t′]
+    newdata.data[..,t,t′] = A.data[..,t,t′]
   end
 
   A.data = newdata.data
