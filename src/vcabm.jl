@@ -95,7 +95,7 @@ function estimate_error!(u_next, cache, atol, rtol)
 end
 
 # Control order: Section III.7 Eq. (7.7)
-@muladd function adjust_order!(u_next, f_next, state, cache, max_k, atol, rtol)
+function adjust_order!(u_next, f_next, state, cache, max_k, atol, rtol)
   @inbounds begin
     @unpack t = state
     @unpack u_prev,g,ϕ_np1,ϕstar_n,error_k,k = cache

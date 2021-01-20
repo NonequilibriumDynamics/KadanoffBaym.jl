@@ -54,19 +54,20 @@ function wigner_transform(x; ts=1:size(x,1), fourier=true)
   end
 
   x′ = circshift(x′, (Nt ÷ 2, 0))
-  
+  τs = ts - reverse(ts)
+
   if !fourier 
-    return x′, (ts - reverse(ts), ts)
+    return x′, (τs, ts)
   else
     # Because the FFT calculates the transform as y_k = \sum_j e^{-2pi i j k/n}
     # from j=0 to j=n-1, we need to transform this into our time and frequency
     # units, which ends up scaling the frequencies `ωs` by (-2pi / dτ).
-    τs = ts - reverse(ts)
-    ωs = fftfreq(Nt, -2pi / (τs[2] - τs[1]))
+    dτ = τs[2] - τs[1]
+    ωs = fftfreq(Nt, -2pi / dτ)
     is = sortperm(ωs)
 
-    x′ = mapslices(x -> (τs[2] - τs[1]) * fft(x) .* exp.(1.0im * τs[1] .* ωs), x′, dims=1)
+    x′ = mapslices(x -> im * dτ * fft(x) .* exp.(1.0im * τs[1] .* ωs), x′, dims=1)
     
-    return 1.0im * x′[is,:], (ωs[is], ts)
+    return x′[is,:], (ωs[is], ts)
   end
 end
