@@ -50,47 +50,39 @@ function kbsolve(f_vert, f_diag, u0, (t0, tmax);
   
   opts = VCABMOptions(; kwargs...)  
 
-  # Support for initial time-grid
-  if isempty(size(t0))
-    t0 = [t0]
+  state = let
+    # Internal representation of `u` is (`u`, `v`)
+    u = isnothing(f_line) ? (u0,) : (u0, l0)
+
+    # Support for initial time-grid
+    if isempty(size(t0))
+      t0 = [t0]
+    else
+      @assert issorted(t0) "Initial time-grid is not in ascending order"
+    end
+
+    @assert last(t0) < tmax "Only t0 < tmax supported"
+
+    VCABMState(u,v0,[t0; last(t0) + opts.dtini])
   end
 
-  @assert last(t0) < tmax "Only t0 < tmax supported"
-
-  # Initialize state and caches
-  state, caches = begin
-    t = length(t0)
+  caches = let
+    t = length(state.t)-1
 
     if isnothing(f_line)
-      u = (u0,) # Internal representation of `u` is (`u`, `v`)
-      cache_line = nothing
+      onetime = nothing
     else
-      u = (u0, l0)
-      update_line(t0, t)
-      cache_line = VCABMCache{eltype(t0)}(opts.kmax, [x[1] for x in u[2]], f_line(u...,t0,t))
+      update_line(state.t, t)
+      onetime = VCABMCache{eltype(t0)}(opts.kmax, [x[1] for x in state.u[2]], f_line(state.u...,state.t,t))
     end
 
-    caches_vert = map(eachindex(t0)) do t′
-      update_time(t0, t, t′)
-      VCABMCache{eltype(t0)}(opts.kmax, [x[t,t′] for x in u[1]], f_vert(u...,t0,t,t′))
+    twotime = map(eachindex(t0)) do t′
+      update_time(state.t, t, t′)
+      twotime = VCABMCache{eltype(t0)}(opts.kmax, [x[t,t′] for x in state.u[1]], f_vert(state.u...,state.t,t,t′))
     end
-    cache_diag = VCABMCache{eltype(t0)}(opts.kmax, [x[t,t] for x in u[1]], f_diag(u...,t0,t))
+    push!(twotime, VCABMCache{eltype(t0)}(opts.kmax, [x[t,t] for x in state.u[1]], f_diag(state.u...,state.t,t)))
 
-    # Resize time-length of the functions `u` and `v`
-    foreach(u -> resize!.(u, last(size(last(u))) + 50), u)
-
-    # Calculate initial dt
-    # if iszero(opts.dtini)
-    #   dt = initial_step(caches_vert[1].u_prev,last(t0),1,opts.atol,opts.rtol;f0=caches_vert[1].f_prev) do x...
-    #     foreach((u,u′) -> u[t+1,1] = u′, u[1], x[1]); update_time([t0; x[2]], t+1, 1)
-    #     update_line([t0; x[2]], t+1)
-    #     f_vert(u..., [t0; x[2]], t+1, 1)
-    #   end
-    # else
-      dt = opts.dtini
-    # end
-
-    VCABMState(u,v0,[t0; last(t0)+dt]), KBCaches{eltype(t0),typeof(cache_diag.u_prev)}(caches_vert, cache_diag, cache_line, cache_diag)
+    KBCaches(twotime, onetime, last(twotime))
   end
 
   kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time, 
@@ -100,8 +92,16 @@ end
 function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time, 
   f_line, update_line, kernel_vert, kernel_diag)
 
-  # This will allow us to have a unified use of f_vert and f_diag
-  f(t1,t2) = isequal(t1, t2) ? f_diag(state.u..., state.t, t1) : f_vert(state.u..., state.t, t1, t2)
+  function update_onetime!(u_next,t1)
+    foreach((u,u′) -> u[t1] = u′, state.u[2], u_next)
+    update_line(state.t, t1)
+  end
+
+  function update_twotime!(u_next,t1,t2)
+    foreach((u,u′) -> u[t1,t2] = u′, state.u[1], u_next)
+    update_time(state.t, t1, t2)
+  end
+  
   # function f(t1, t2, predict::Bool)
   #   kernel(t) = isequal(t1, t2) ? t -> kernel_diag(state.t,t1,t) : t -> kernel_vert(state.t,t1,t2,t)
     
@@ -115,49 +115,47 @@ function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time,
   #   foreach((v,v′) -> v[t,t′] = v′, v, v′)
   #   return isequal(t1, t2) ? f_diag(state.u..., state.t, t1) : f_vert(state.u..., state.t, t1, t2)
   # end
-
-  # The adaptivity of the integration is controlled by a master cache
-  @do_while timeloop!(state,caches.master,tmax,opts) begin
+  function f(t1,t2)
+    if isequal(t1, t2)
+      f_diag(state.u..., state.t, t1)
+    else
+      f_vert(state.u..., state.t, t1, t2)
+    end
+  end
+  
+  while timeloop!(state,caches.master,tmax,opts)
     # Current time index
     t = length(state.t)
 
-    # We are stepping from `t-1` to `t` so we should have `t-1` caches
-    @assert length(caches.vert) + 1 == t
-
-    # Resize solution if necessary
-    if (s = last(size(last(state.u[1])))) == t
-      s += min(max(ceil(Int, (tmax - state.t[end]) / (state.t[end] - state.t[end-1])), 10), 20)
-      foreach(u -> resize!.(u, s), state.u)
-    end
+    @assert length(caches.twotime) == t
 
     # Predictor for the 2-time functions
-    for (t′, cache) in enumerate([caches.vert; caches.diag])
+    for (t′, cache) in enumerate(caches.twotime)
       u_next = predict!(state, cache)
-      foreach((u,u′) -> u[t,t′] = u′, state.u[1], u_next); update_time(state.t, t, t′)
+      update_twotime!(u_next, t, t′)
     end
 
     # Predictor, corrector and error estimation for the 1-time functions
     if !isnothing(f_line) 
       u_next = predict!(state, caches.line)
-      foreach((u,u′) -> u[t] = u′, state.u[2], u_next); update_line(state.t, t)
+      update_onetime!(u_next, t)
 
-      u_next = correct!(u_next, f_line(state.u..., state.t, t), caches.line)
-      foreach((u,u′) -> u[t] = u′, state.u[2], u_next); update_line(state.t, t)
+      u_next = correct!(f_line(state.u..., state.t, t), caches.line)
+      update_onetime!(u_next, t)
 
-      caches.line.error_k = estimate_error!(u_next, caches.line, opts.atol, opts.rtol)
+      estimate_error!(u_next, caches.line, opts.atol, opts.rtol)
     end
 
     # Corrector and error estimation for the 2-time functions
     if !isnothing(f_line) && caches.line.error_k > one(caches.line.error_k)
       caches.master = caches.line
     else
-      for (t′, cache) in enumerate([caches.vert; caches.diag])
-        u_next = [x[t,t′] for x in state.u[1]] # saved in state.u[1]
-        u_next = correct!(u_next, f(t,t′), cache)
-        foreach((u,u′) -> u[t,t′] = u′, state.u[1], u_next); update_time(state.t, t, t′)
+      for (t′, cache) in enumerate(caches.twotime)
+        u_next = correct!(f(t,t′), cache)
+        update_twotime!(u_next, t, t′)
 
         # Error estimation
-        cache.error_k = estimate_error!(u_next, cache, opts.atol, opts.rtol)
+        estimate_error!(cache, opts.atol, opts.rtol)
 
         # Fail step: Section III.7 Eq. (7.4)
         if cache.error_k > one(cache.error_k)
@@ -170,49 +168,34 @@ function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time,
     # If the step is accepted
     if caches.master.error_k <= one(caches.master.error_k)
       # Set the cache with highest error as the master cache
-      # NOTE: this cache is not calculated before since 
       t′, caches.master = reduce((x,y) -> x[2].error_k > y[2].error_k ? x : y,
-       enumerate([caches.vert; caches.diag]))
+       enumerate(caches.twotime))
 
       # Adjust the master cache's order for the next time-step
       if !isnothing(f_line) && caches.line.error_k > caches.master.error_k
         caches.master = caches.line
-        u_next = [x[t] for x in state.u[2]]
-        adjust_order!(u_next, f_line(state.u..., state.t, t), state, caches.master, opts.kmax, opts.atol, opts.rtol)
+        adjust_order!(f_line(state.u..., state.t, t), state, caches.master, opts.kmax, opts.atol, opts.rtol)
       else
-        u_next = [x[t,t′] for x in state.u[1]]
-        adjust_order!(u_next, f(t,t′), state, caches.master, opts.kmax, opts.atol, opts.rtol)
+        adjust_order!(f(t,t′), state, caches.master, opts.kmax, opts.atol, opts.rtol)
       end
 
       # Update all caches
-      update_caches!(caches, state, f_vert, f_diag, f_line)
+      update_caches!(caches, state, f, f_vert, f_line)
     end
   end # timeloop!
-
-  # Trim solution
-  foreach(u -> resize!.(u, length(state.t)), state.u)
   
   return state, caches
 end
 
-function update_caches!(caches, state::VCABMState, f_vert, f_diag, f_line)
+function update_caches!(caches, state::VCABMState, f, f_vert, f_line)
   t = length(state.t)
 
-  @assert length(caches.vert) + 1 == t
+  @assert length(caches.twotime) == t
 
-  # Update all vertical caches
-  for (t′, cache) in enumerate(caches.vert)
-    cache.u_prev = [x[t,t′] for x in state.u[1]] # u_prev was saved in state.u
-    cache.f_prev = f_vert(state.u..., state.t, t, t′)
-    cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-    cache.k = min(caches.master.k, cache.k+1) # Ramp up order
-  end
-
-  # Update the diagonal cache
-  begin
-    cache = caches.diag
-    cache.u_prev = [x[t,t] for x in state.u[1]] # u_prev was saved in state.u
-    cache.f_prev = f_diag(state.u..., state.t, t)
+  # Update the 2-time caches
+  for (t′, cache) in enumerate(caches.twotime)
+    @. cache.u_prev = cache.u_next
+    cache.f_prev = f(t, t′)
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
     cache.k = min(caches.master.k, cache.k+1) # Ramp up order
   end
@@ -220,7 +203,7 @@ function update_caches!(caches, state::VCABMState, f_vert, f_diag, f_line)
   # Update the 1-time cache
   if !isnothing(f_line)
     cache = caches.line
-    cache.u_prev = [x[t] for x in state.u[2]] # u_prev was saved in state.u
+    @. cache.u_prev = cache.u_next
     cache.f_prev = f_line(state.u...,state.t,t)
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
     cache.k = min(caches.master.k, cache.k+1) # Ramp up order
@@ -228,48 +211,66 @@ function update_caches!(caches, state::VCABMState, f_vert, f_diag, f_line)
 
   # Add a new cache for the next time
   begin
-    times = copy(state.t)
+    times = state.t
 
     t0 = max(t - caches.master.k, 1)
     u0 = [x[t0,t] for x in state.u[1]]
     f0 = f_vert(state.u..., state.t, t0, t)
-    cache = VCABMCache{eltype(state.t)}(length(caches.diag.ϕ_n)-1, u0, f0)
+    cache = VCABMCache{eltype(state.t)}(length(last(caches.twotime).ϕ_n)-1, u0, f0)
 
     for t′ in (t0+1):t
-      state.t = times[1:t′]; ϕ_and_ϕstar!(state, cache, cache.k+1)
+      state.t = view(times,1:t′); ϕ_and_ϕstar!(state, cache, cache.k+1)
 
       cache.u_prev = [x[t′,t] for x in state.u[1]]
       cache.f_prev = f_vert(state.u..., times, t′, t)
       cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
       cache.k = min(caches.master.k, cache.k+1)
     end
-    push!(caches.vert, cache)
+
+    state.t = times
+    insert!(caches.twotime, t, cache)
   end
 
-  @assert length(caches.vert) == t
+  @assert length(caches.twotime) == t + 1
 end
 
 function timeloop!(state,cache,tmax,opts)
-  @unpack k, error_k= cache
+  @unpack k, error_k = cache
 
   # II.4 Automatic Step Size Control, Eq. (4.13)
   q = max(inv(opts.qmax), min(inv(opts.qmin), error_k^(1/(k+1)) / opts.γ))
   dt = min((state.t[end] - state.t[end-1]) / q, opts.dtmax)
 
-  if cache.error_k > one(cache.error_k)
-    pop!(state.t) # remove t_prev
+  # Remove t_prev if last step failed
+  if error_k > one(error_k)
+    pop!(state.t) 
   end
 
   # Don't go over tmax
   if last(state.t) + dt > tmax
     dt = tmax - last(state.t)
   end
-  return !iszero(dt) && !opts.stop() && (push!(state.t, last(state.t) + dt); true)
+
+  # Reached the end of the integration
+  if iszero(dt) || opts.stop()
+    # Trim solution
+    foreach(u -> resize!.(u, length(state.t)), state.u)
+
+    return false
+  end
+
+  # Resize solution if necessary
+  if (t = length(state.t)) == last(size(first(first(state.u))))
+    foreach(u -> resize!.(u, t + min(50, ceil(Int, (tmax - state.t[end]) / dt))), state.u)
+  end
+
+  return (push!(state.t, last(state.t) + dt); true)
 end
 
 mutable struct KBCaches{T,F}
-  vert::Vector{VCABMCache{T,F}}
-  diag::VCABMCache{T,F}
-  line::Union{Nothing, VCABMCache}
+  twotime::Vector{VCABMCache{T,F}}
+  onetime::Union{Nothing, VCABMCache}
   master::VCABMCache # basically a reference to one of the other caches
+
+  KBCaches(tt::Vector{VCABMCache{T,F}}, ot, m) where {T,F} = new{T,F}(tt,ot,m)
 end
