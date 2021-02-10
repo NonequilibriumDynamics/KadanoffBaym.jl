@@ -97,39 +97,12 @@ function ϕ_np1!(cache, du, k)
 end
 
 # Calculate error: Section III.7 Eq. (7.3)
-function estimate_error!(cache, atol, rtol)
-  @unpack u_prev,u_next,g,ϕ_np1,ϕstar_n,k,error_u = cache
-  error_k = error_estimate(error_u,(g[k+1]-g[k]) * ϕ_np1[k+1], u_prev, u_next, atol, rtol) |> norm
-  cache.error_k = error_k
-end
-
-# Control order: Section III.7 Eq. (7.7)
-function adjust_order!(f_next, state, cache, max_k, atol, rtol)
-  @inbounds begin
-    @unpack t = state
-    @unpack u_prev,u_next,g,ϕ_np1,ϕstar_n,error_k,k,error_u = cache
-
-    # Fail step: Section III.7 Eq. (7.4)
-    if error_k > one(error_k)
-      @assert false
-    end
-
-    if length(t)<=5 || k<3
-      cache.k = min(3, k+1, max_k)
-    else
-      error_k1 = error_estimate(error_u, (g[k]-g[k-1]) * ϕ_np1[k], u_prev, u_next, atol, rtol) |> norm
-      error_k2 = error_estimate(error_u, (g[k-1]-g[k-2]) * ϕ_np1[k-1], u_prev, u_next, atol, rtol) |> norm
-      if max(error_k2, error_k1) <= error_k
-        cache.k = k-1
-      else
-        ϕ_np1!(cache, f_next, k+2)
-        error_kstar = error_estimate(error_u, (t[end] - t[end-1]) * γstar[k+2] * ϕ_np1[k+2], u_prev, u_next, atol, rtol) |> norm
-        if error_kstar < error_k
-          cache.k = min(k+1, max_k)
-          cache.error_k = one(error_k)   # constant dt
-        end
-      end
-    end
+function estimate_error(cache, k, atol, rtol, dt=nothing)
+  @unpack u_prev,u_next,g,ϕ_np1,error_u = cache
+  if isnothing(dt)
+    error_estimate(error_u, (g[k+1]-g[k]) * ϕ_np1[k+1], u_prev, u_next, atol, rtol)
+  else
+    error_estimate(error_u, dt * γstar[k+2] * ϕ_np1[k+2], u_prev, u_next, atol, rtol)
   end
 end
 
@@ -184,7 +157,10 @@ end
 @inline function error_estimate(ũ::Number, u₀::Number, u₁::Number, atol::Real, rtol::Real)
   ũ / (atol + max(norm(u₀), norm(u₁)) * rtol)
 end
-@inline norm(u) = LinearAlgebra.norm(u) / sqrt(length(u))
+@inline norm(u) = LinearAlgebra.norm(u) / sqrt(total_length(u))
+@inline total_length(u::Number) = length(u)
+@inline total_length(u::AbstractArray{<:Number}) = length(u)
+@inline total_length(u::AbstractArray{<:AbstractArray}) = sum(total_length, u)
 
 # Starting Step Size: Section II.4
 function initial_step(f, u0, t0, k, atol, rtol; f0=f(u0, t0))

@@ -82,7 +82,7 @@ function kbsolve(f_vert, f_diag, u0, (t0, tmax);
     end
     push!(twotime, VCABMCache{eltype(t0)}(opts.kmax, [x[t,t] for x in state.u[1]], f_diag(state.u...,state.t,t)))
 
-    KBCaches(twotime, onetime, last(twotime))
+    KBCaches(twotime, onetime)
   end
 
   kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time, 
@@ -118,7 +118,7 @@ function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time,
   f(t1,t2) = isequal(t1, t2) ? f_diag(state.u..., state.t, t1) : f_vert(state.u..., state.t, t1, t2)
   f(t1) = f_line(state.u..., state.t, t1)
   
-  while timeloop!(state,caches.master,tmax,opts)
+  while timeloop!(state,caches,tmax,opts)
     # Current time index
     t = length(state.t)
 
@@ -138,7 +138,7 @@ function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time,
       u_next = correct!(f(t), caches.onetime)
       update_onetime!(u_next, t)
 
-      estimate_error!(u_next, caches.onetime, opts.atol, opts.rtol)
+      estimate_error(u_next, caches.onetime, opts.atol, opts.rtol)
     end
 
     # Corrector and error estimation for the 2-time functions
@@ -148,43 +148,48 @@ function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time,
       for (t′, cache) in enumerate(caches.twotime)
         u_next = correct!(f(t,t′), cache)
         update_twotime!(u_next, t, t′)
-
-        # Error estimation
-        estimate_error!(cache, opts.atol, opts.rtol)
-
-        # Fail step: Section III.7 Eq. (7.4)
-        if cache.error_k > one(cache.error_k)
-          caches.master = cache
-          break
-        end
       end
     end
 
+    caches.error_k = estimate_error.(caches.twotime, caches.k, opts.atol, opts.rtol) |> norm
     # If the step is accepted
-    if caches.master.error_k <= one(caches.master.error_k)
-      # Set the cache with highest error as the master cache
-      t′, caches.master = reduce((x,y) -> x[2].error_k > y[2].error_k ? x : y,
-       enumerate(caches.twotime))
+    if caches.error_k <= one(caches.error_k)
 
-      # Adjust the master cache's order for the next time-step
-      adjust_order!(caches.master === caches.onetime ? f(t) : f(t,t′), 
-        state, caches.master, opts.kmax, opts.atol, opts.rtol)
+      f_next = map(t′ -> f(t, t′), eachindex(caches.twotime))
+
+      # Control order: Section III.7 Eq. (7.7)
+      if t<=5 || caches.k<3
+        caches.k = min(3, caches.k+1, opts.kmax)
+      else
+        error_k1 = estimate_error.(caches.twotime, caches.k-1, opts.atol, opts.rtol) |> norm
+        error_k2 = estimate_error.(caches.twotime, caches.k-2, opts.atol, opts.rtol) |> norm
+        if max(error_k2, error_k1) <= caches.error_k
+          caches.k = caches.k-1
+        else
+          foreach(i -> ϕ_np1!(caches.twotime[i], f_next[i], caches.k+2), eachindex(caches.twotime))
+          error_kstar = estimate_error.(caches.twotime, caches.k, opts.atol, opts.rtol, state.t[end] - state.t[end-1]) |> norm
+          if error_kstar < caches.error_k
+            caches.k = min(caches.k+1, opts.kmax)
+            caches.error_k = one(caches.error_k)   # constant dt
+          end
+        end
+      end
 
       # Update the 2-time caches
       for (t′, cache) in enumerate(caches.twotime)
-        update_cache!(f(t, t′), cache, caches.master.k)
+        update_cache!(f_next[t′], cache, caches.k)
       end
 
       # Update the 1-time cache
       if !isnothing(f_line)
-        update_cache!(f(t), caches.onetime, caches.master.k)
+        update_cache!(f(t), caches.onetime, caches.k)
       end
 
       # Add a new cache for the next time
       begin
         times = state.t
 
-        t0 = max(t - caches.master.k, 1)
+        t0 = max(t - caches.k, 1)
         u0 = [x[t0,t] for x in state.u[1]]
         f0 = f_vert(state.u..., state.t, t0, t)
         cache = VCABMCache{eltype(state.t)}(opts.kmax, u0, f0)
@@ -192,7 +197,7 @@ function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time,
         for t′ in (t0+1):t
           state.t = view(times,1:t′); ϕ_and_ϕstar!(state, cache, cache.k+1)
           cache.u_next = [x[t′,t] for x in state.u[1]]
-          update_cache!(f_vert(state.u..., times, t′, t), cache, caches.master.k)
+          update_cache!(f_vert(state.u..., times, t′, t), cache, caches.k)
         end
 
         state.t = times
@@ -241,7 +246,8 @@ end
 mutable struct KBCaches{T,F}
   twotime::Vector{VCABMCache{T,F}}
   onetime::Union{Nothing, VCABMCache}
-  master::VCABMCache # basically a reference to one of the other caches
+  error_k::Float64
+  k::Int64
 
-  KBCaches(tt::Vector{VCABMCache{T,F}}, ot, m) where {T,F} = new{T,F}(tt,ot,m)
+  KBCaches(tt::Vector{VCABMCache{T,F}}, ot) where {T,F} = new{T,F}(tt,ot,Inf,1)
 end
