@@ -56,6 +56,13 @@ mutable struct VCABMCache{T,U}
   end
 end
 
+function update_cache!(f_next, cache, max_k)
+  @. cache.u_prev = cache.u_next
+  @. cache.f_prev = f_next
+  cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
+  cache.k = min(max_k, cache.k+1) # Ramp up order
+end
+
 # Explicit Adams: Section III.5 Eq. (5.5)
 function predict!(state, cache)
   @inbounds begin
@@ -108,7 +115,7 @@ function adjust_order!(f_next, state, cache, max_k, atol, rtol)
     end
 
     if length(t)<=5 || k<3
-      cache.k = min(k+1, 3, max_k)
+      cache.k = min(3, k+1, max_k)
     else
       error_k1 = error_estimate(error_u, (g[k]-g[k-1]) * ϕ_np1[k], u_prev, u_next, atol, rtol) |> norm
       error_k2 = error_estimate(error_u, (g[k-1]-g[k-2]) * ϕ_np1[k-1], u_prev, u_next, atol, rtol) |> norm

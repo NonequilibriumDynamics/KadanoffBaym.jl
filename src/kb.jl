@@ -115,13 +115,8 @@ function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time,
   #   foreach((v,v′) -> v[t,t′] = v′, v, v′)
   #   return isequal(t1, t2) ? f_diag(state.u..., state.t, t1) : f_vert(state.u..., state.t, t1, t2)
   # end
-  function f(t1,t2)
-    if isequal(t1, t2)
-      f_diag(state.u..., state.t, t1)
-    else
-      f_vert(state.u..., state.t, t1, t2)
-    end
-  end
+  f(t1,t2) = isequal(t1, t2) ? f_diag(state.u..., state.t, t1) : f_vert(state.u..., state.t, t1, t2)
+  f(t1) = f_line(state.u..., state.t, t1)
   
   while timeloop!(state,caches.master,tmax,opts)
     # Current time index
@@ -137,18 +132,18 @@ function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time,
 
     # Predictor, corrector and error estimation for the 1-time functions
     if !isnothing(f_line) 
-      u_next = predict!(state, caches.line)
+      u_next = predict!(state, caches.onetime)
       update_onetime!(u_next, t)
 
-      u_next = correct!(f_line(state.u..., state.t, t), caches.line)
+      u_next = correct!(f(t), caches.onetime)
       update_onetime!(u_next, t)
 
-      estimate_error!(u_next, caches.line, opts.atol, opts.rtol)
+      estimate_error!(u_next, caches.onetime, opts.atol, opts.rtol)
     end
 
     # Corrector and error estimation for the 2-time functions
-    if !isnothing(f_line) && caches.line.error_k > one(caches.line.error_k)
-      caches.master = caches.line
+    if !isnothing(f_line) && caches.onetime.error_k > one(caches.onetime.error_k)
+      caches.master = caches.onetime
     else
       for (t′, cache) in enumerate(caches.twotime)
         u_next = correct!(f(t,t′), cache)
@@ -172,66 +167,42 @@ function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time,
        enumerate(caches.twotime))
 
       # Adjust the master cache's order for the next time-step
-      if !isnothing(f_line) && caches.line.error_k > caches.master.error_k
-        caches.master = caches.line
-        adjust_order!(f_line(state.u..., state.t, t), state, caches.master, opts.kmax, opts.atol, opts.rtol)
-      else
-        adjust_order!(f(t,t′), state, caches.master, opts.kmax, opts.atol, opts.rtol)
+      adjust_order!(caches.master === caches.onetime ? f(t) : f(t,t′), 
+        state, caches.master, opts.kmax, opts.atol, opts.rtol)
+
+      # Update the 2-time caches
+      for (t′, cache) in enumerate(caches.twotime)
+        update_cache!(f(t, t′), cache, caches.master.k)
       end
 
-      # Update all caches
-      update_caches!(caches, state, f, f_vert, f_line)
+      # Update the 1-time cache
+      if !isnothing(f_line)
+        update_cache!(f(t), caches.onetime, caches.master.k)
+      end
+
+      # Add a new cache for the next time
+      begin
+        times = state.t
+
+        t0 = max(t - caches.master.k, 1)
+        u0 = [x[t0,t] for x in state.u[1]]
+        f0 = f_vert(state.u..., state.t, t0, t)
+        cache = VCABMCache{eltype(state.t)}(opts.kmax, u0, f0)
+
+        for t′ in (t0+1):t
+          state.t = view(times,1:t′); ϕ_and_ϕstar!(state, cache, cache.k+1)
+          cache.u_next = [x[t′,t] for x in state.u[1]]
+          update_cache!(f_vert(state.u..., times, t′, t), cache, caches.master.k)
+        end
+
+        state.t = times
+        insert!(caches.twotime, t, cache)
+        @assert length(caches.twotime) == length(state.t) + 1
+      end
     end
   end # timeloop!
   
   return state, caches
-end
-
-function update_caches!(caches, state::VCABMState, f, f_vert, f_line)
-  t = length(state.t)
-
-  @assert length(caches.twotime) == t
-
-  # Update the 2-time caches
-  for (t′, cache) in enumerate(caches.twotime)
-    @. cache.u_prev = cache.u_next
-    cache.f_prev = f(t, t′)
-    cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-    cache.k = min(caches.master.k, cache.k+1) # Ramp up order
-  end
-
-  # Update the 1-time cache
-  if !isnothing(f_line)
-    cache = caches.line
-    @. cache.u_prev = cache.u_next
-    cache.f_prev = f_line(state.u...,state.t,t)
-    cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-    cache.k = min(caches.master.k, cache.k+1) # Ramp up order
-  end
-
-  # Add a new cache for the next time
-  begin
-    times = state.t
-
-    t0 = max(t - caches.master.k, 1)
-    u0 = [x[t0,t] for x in state.u[1]]
-    f0 = f_vert(state.u..., state.t, t0, t)
-    cache = VCABMCache{eltype(state.t)}(length(last(caches.twotime).ϕ_n)-1, u0, f0)
-
-    for t′ in (t0+1):t
-      state.t = view(times,1:t′); ϕ_and_ϕstar!(state, cache, cache.k+1)
-
-      cache.u_prev = [x[t′,t] for x in state.u[1]]
-      cache.f_prev = f_vert(state.u..., times, t′, t)
-      cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-      cache.k = min(caches.master.k, cache.k+1)
-    end
-
-    state.t = times
-    insert!(caches.twotime, t, cache)
-  end
-
-  @assert length(caches.twotime) == t + 1
 end
 
 function timeloop!(state,cache,tmax,opts)
