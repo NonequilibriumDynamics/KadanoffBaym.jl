@@ -50,164 +50,80 @@ function kbsolve(f_vert, f_diag, u0, (t0, tmax);
   
   opts = VCABMOptions(; kwargs...)  
 
+  # Support for initial time-grid
+  if isempty(size(t0))
+    t0 = [t0]
+  else
+    @assert issorted(t0) "Initial time-grid is not in ascending order"
+  end
+  @assert last(t0) < tmax "Only t0 < tmax supported"
+
   state = let
-    # Internal representation of `u` is (`u`, `v`)
-    u = isnothing(f_line) ? (u0,) : (u0, l0)
+    cache = begin
+      t = length(t0)
 
-    # Support for initial time-grid
-    if isempty(size(t0))
-      t0 = [t0]
+      u0_ = map(t′ -> [x[t,t′] for x in u0], eachindex(t0))
+      u0_ = push!(u0_, [x[t,t] for x in u0])
+
+      f0 = map(t′ -> f_vert(u0,t0,t,t′), eachindex(t0))
+      f0 = push!(f0, f_diag(u0,t0,t))
+
+      VCABMCache{eltype(t0)}(opts.kmax, VectorOfArray(u0_), VectorOfArray(f0))
+    end
+
+    KBState(u0,v0, [t0; last(t0) + opts.dtini], cache)
+  end
+
+  function f(t1,t2)
+    if isequal(t1, t2)
+      f_diag(state.u, state.t, t1)
     else
-      @assert issorted(t0) "Initial time-grid is not in ascending order"
+      f_vert(state.u, state.t, t1, t2)
     end
-
-    @assert last(t0) < tmax "Only t0 < tmax supported"
-
-    VCABMState(u,v0,[t0; last(t0) + opts.dtini])
   end
-
-  caches = let
-    t = length(state.t)-1
-
-    if isnothing(f_line)
-      onetime = nothing
-    else
-      update_line(state.t, t)
-      onetime = VCABMCache{eltype(t0)}(opts.kmax, [x[1] for x in state.u[2]], f_line(state.u...,state.t,t))
-    end
-
-    twotime = map(eachindex(t0)) do t′
-      update_time(state.t, t, t′)
-      twotime = VCABMCache{eltype(t0)}(opts.kmax, [x[t,t′] for x in state.u[1]], f_vert(state.u...,state.t,t,t′))
-    end
-    push!(twotime, VCABMCache{eltype(t0)}(opts.kmax, [x[t,t] for x in state.u[1]], f_diag(state.u...,state.t,t)))
-
-    KBCaches(twotime, onetime)
-  end
-
-  kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time, 
-    f_line, update_line, kernel_vert, kernel_diag)
-end
-
-function kbsolve_(f_vert, f_diag, tmax, state, caches, opts, update_time, 
-  f_line, update_line, kernel_vert, kernel_diag)
-
-  function update_onetime!(u_next,t1)
-    foreach((u,u′) -> u[t1] = u′, state.u[2], u_next)
-    update_line(state.t, t1)
-  end
-
   function update_twotime!(u_next,t1,t2)
-    foreach((u,u′) -> u[t1,t2] = u′, state.u[1], u_next)
+    foreach((u,u′) -> u[t1,t2] = u′, state.u, u_next)
     update_time(state.t, t1, t2)
   end
   
-  # function f(t1, t2, predict::Bool)
-  #   kernel(t) = isequal(t1, t2) ? t -> kernel_diag(state.t,t1,t) : t -> kernel_vert(state.t,t1,t2,t)
-    
-  #   if predict
-  #     v′ = volterra_predict(kernel, state, caches.master)
-  #   else
-  #     v_next = [v[t,t′] for x in v]
-  #     v′ = volterra_correct(v_next, kernel, caches.master)
-  #   end
-
-  #   foreach((v,v′) -> v[t,t′] = v′, v, v′)
-  #   return isequal(t1, t2) ? f_diag(state.u..., state.t, t1) : f_vert(state.u..., state.t, t1, t2)
-  # end
-  f(t1,t2) = isequal(t1, t2) ? f_diag(state.u..., state.t, t1) : f_vert(state.u..., state.t, t1, t2)
-  f(t1) = f_line(state.u..., state.t, t1)
-  
-  while timeloop!(state,caches,tmax,opts)
+  while timeloop!(state,state.u_cache,tmax,opts)
     # Current time index
     t = length(state.t)
 
-    @assert length(caches.twotime) == t
+    # Predictor
+    u_next = predict!(state, state.u_cache)
+    foreach(t′ -> update_twotime!(u_next[t′],t,t′), 1:t)
 
-    # Predictor for the 2-time functions
-    for (t′, cache) in enumerate(caches.twotime)
-      u_next = predict!(state, cache)
+    # Corrector NOTE: u[t,t′] is *corrected* before valuating t′+1
+    for t′ in 1:t
+      u_next = correct!(f(t,t′), state.u_cache, t′)
       update_twotime!(u_next, t, t′)
     end
 
-    # Predictor, corrector and error estimation for the 1-time functions
-    if !isnothing(f_line) 
-      u_next = predict!(state, caches.onetime)
-      update_onetime!(u_next, t)
+    # Calculate error and adjust order
+    adjust_order!((f(t, t′) for t′ in 1:t), state, state.u_cache, opts.kmax, opts.atol, opts.rtol)
+    
+    # Add a new cache for the next time
+    if state.u_cache.error_k <= one(state.u_cache.error_k)
+      times = state.t
 
-      u_next = correct!(f(t), caches.onetime)
-      update_onetime!(u_next, t)
+      t0 = max(t - state.u_cache.k, 1)
+      u0 = [x[t0,t] for x in state.u]
+      f0 = f_vert(state.u, state.t, t0, t)
+      cache = VCABMCache{eltype(state.t)}(opts.kmax, u0, f0)
 
-      estimate_error(u_next, caches.onetime, opts.atol, opts.rtol)
-    end
-
-    # Corrector and error estimation for the 2-time functions
-    if !isnothing(f_line) && caches.onetime.error_k > one(caches.onetime.error_k)
-      caches.master = caches.onetime
-    else
-      for (t′, cache) in enumerate(caches.twotime)
-        u_next = correct!(f(t,t′), cache)
-        update_twotime!(u_next, t, t′)
-      end
-    end
-
-    caches.error_k = estimate_error.(caches.twotime, caches.k, opts.atol, opts.rtol) |> norm
-    # If the step is accepted
-    if caches.error_k <= one(caches.error_k)
-
-      f_next = map(t′ -> f(t, t′), eachindex(caches.twotime))
-
-      # Control order: Section III.7 Eq. (7.7)
-      if t<=5 || caches.k<3
-        caches.k = min(3, caches.k+1, opts.kmax)
-      else
-        error_k1 = estimate_error.(caches.twotime, caches.k-1, opts.atol, opts.rtol) |> norm
-        error_k2 = estimate_error.(caches.twotime, caches.k-2, opts.atol, opts.rtol) |> norm
-        if max(error_k2, error_k1) <= caches.error_k
-          caches.k = caches.k-1
-        else
-          foreach(i -> ϕ_np1!(caches.twotime[i], f_next[i], caches.k+2), eachindex(caches.twotime))
-          error_kstar = estimate_error.(caches.twotime, caches.k, opts.atol, opts.rtol, state.t[end] - state.t[end-1]) |> norm
-          if error_kstar < caches.error_k
-            caches.k = min(caches.k+1, opts.kmax)
-            caches.error_k = one(caches.error_k)   # constant dt
-          end
-        end
+      for t′ in (t0+1):t
+        state.t = view(times,1:t′); ϕ_and_ϕstar!(state, cache, cache.k+1)
+        cache.u_next = [x[t′,t] for x in state.u]
+        update_cache!(f_vert(state.u, times, t′, t), cache, state.u_cache.k)
       end
 
-      # Update the 2-time caches
-      for (t′, cache) in enumerate(caches.twotime)
-        update_cache!(f_next[t′], cache, caches.k)
-      end
-
-      # Update the 1-time cache
-      if !isnothing(f_line)
-        update_cache!(f(t), caches.onetime, caches.k)
-      end
-
-      # Add a new cache for the next time
-      begin
-        times = state.t
-
-        t0 = max(t - caches.k, 1)
-        u0 = [x[t0,t] for x in state.u[1]]
-        f0 = f_vert(state.u..., state.t, t0, t)
-        cache = VCABMCache{eltype(state.t)}(opts.kmax, u0, f0)
-
-        for t′ in (t0+1):t
-          state.t = view(times,1:t′); ϕ_and_ϕstar!(state, cache, cache.k+1)
-          cache.u_next = [x[t′,t] for x in state.u[1]]
-          update_cache!(f_vert(state.u..., times, t′, t), cache, caches.k)
-        end
-
-        state.t = times
-        insert!(caches.twotime, t, cache)
-        @assert length(caches.twotime) == length(state.t) + 1
-      end
+      insert_cache!(state.u_cache, t, cache)
+      state.t = times
     end
   end # timeloop!
   
-  return state, caches
+  return state
 end
 
 function timeloop!(state,cache,tmax,opts)
@@ -229,25 +145,27 @@ function timeloop!(state,cache,tmax,opts)
 
   # Reached the end of the integration
   if iszero(dt) || opts.stop()
-    # Trim solution
-    foreach(u -> resize!.(u, length(state.t)), state.u)
-
+    foreach(u -> resize!(u, length(state.t)), state.u) # trim solution
     return false
   end
 
   # Resize solution if necessary
-  if (t = length(state.t)) == last(size(first(first(state.u))))
-    foreach(u -> resize!.(u, t + min(50, ceil(Int, (tmax - state.t[end]) / dt))), state.u)
+  if (t = length(state.t)) == last(size(first(state.u)))
+    foreach(u -> resize!(u, t + min(50, ceil(Int, (tmax - state.t[end]) / dt))), state.u)
   end
 
   return (push!(state.t, last(state.t) + dt); true)
 end
 
-mutable struct KBCaches{T,F}
-  twotime::Vector{VCABMCache{T,F}}
-  onetime::Union{Nothing, VCABMCache}
-  error_k::Float64
-  k::Int64
+# Holds the information about the integration
+mutable struct KBState{T,U,V,F}
+  u::U
+  v::V
+  t::Vector{T}
 
-  KBCaches(tt::Vector{VCABMCache{T,F}}, ot) where {T,F} = new{T,F}(tt,ot,Inf,1)
+  u_cache::VCABMCache{T,F}
+
+  function KBState(u::U, v::V, t::Vector{T}, cache::VCABMCache{T,F}) where {T,U,V,F}
+    new{T,U,V,F}(u, v, t, cache)
+  end
 end

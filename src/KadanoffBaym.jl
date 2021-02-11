@@ -6,6 +6,7 @@ using LinearAlgebra
 using Parameters: @unpack
 using EllipsisNotation
 using Requires
+using RecursiveArrayTools
 
 export GreenFunction, Classical, Lesser, Greater, MixedLesser, MixedGreater
 export kbsolve
