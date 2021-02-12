@@ -25,44 +25,65 @@ end
 mutable struct VCABMCache{T,U}
   u_prev::U
   u_next::U
+  u_erro::U
   f_prev::U
+
   ϕ_n::Vector{U}
   ϕ_np1::Vector{U}
   ϕstar_n::Vector{U}
   ϕstar_nm1::Vector{U}
+
   c::Matrix{T}
   g::Vector{T}
-  k::Int # order
+  k::Int
   error_k::T
-  u_erro::U
 
   function VCABMCache{T}(max_k, u_prev::U, f_prev) where {T,U} # k = 1
     ϕ_n = [zero.(f_prev) for _ in 1:max_k+1]
     ϕstar_nm = [zero.(f_prev) for _ in 1:max_k+1]
     ϕstar_n = [zero.(f_prev) for _ in 1:max_k+1]
     ϕ_np = [zero.(f_prev) for _ in 1:max_k+2]
-    new{T,U}(u_prev,zero.(u_prev),f_prev,ϕ_n,ϕ_np,ϕstar_n,ϕstar_nm,zeros(T,max_k+1,max_k+1),zeros(T,max_k+1),1,T(Inf),zero.(u_prev))
+    new{T,U}(
+      u_prev,zero.(u_prev),zero.(u_prev),f_prev,
+      ϕ_n,ϕ_np,ϕstar_n,ϕstar_nm,
+      zeros(T,max_k+1,max_k+1),zeros(T,max_k+1),1,T(Inf))
   end
 end
 
-function insert_cache!(a::VCABMCache, i, item::VCABMCache)
-  insert!(a.u_prev.u, i, item.u_prev)
-  insert!(a.u_next.u, i, item.u_next)
-  insert!(a.f_prev.u, i, item.f_prev)
-  insert!(a.u_erro.u, i, item.u_erro)
-  for k in 1:length(a.ϕ_n)
-    insert!(a.ϕ_np1[k].u, i, item.ϕ_np1[k])
-    insert!(a.ϕ_n[k].u, i, item.ϕ_n[k])
-    insert!(a.ϕstar_nm1[k].u, i, item.ϕstar_nm1[k])
-    insert!(a.ϕstar_n[k].u, i, item.ϕstar_n[k])
-  end
-end
+function extend_cache!(f, state, kmax)
+  @unpack u_prev, u_next, u_erro, f_prev, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, c, g = state.u_cache
+  t = length(state.t)
 
-function update_cache!(f_next, cache, max_k)
-  @. cache.u_prev = cache.u_next
-  @. cache.f_prev = f_next
-  cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-  cache.k = min(max_k, cache.k+1) # Ramp up order
+  # Duplicate the last element u[t,t]
+  push!(u_prev.u, copy(u_prev[t]))
+  push!(u_next.u, copy(u_next[t]))
+  push!(u_erro.u, copy(u_erro[t]))
+  push!(f_prev.u, copy(f_prev[t]))
+  for k in 1:kmax
+    push!(ϕ_n[k].u, copy(ϕ_n[k][t]))
+    push!(ϕ_np1[k].u, copy(ϕ_np1[k][t]))
+    push!(ϕstar_n[k].u, copy(ϕstar_n[k][t]))
+    push!(ϕstar_nm1[k].u, copy(ϕstar_nm1[k][t]))
+  end
+
+  # Build ϕs at new point point `t` with order `k`
+  f_prev[t] .= f(max(t - state.u_cache.k,1))
+
+  for k in 1:state.u_cache.k
+    @views ϕ_and_ϕstar!(
+      (t = state.t[1:(t - state.u_cache.k + k)], ), 
+      (f_prev=f_prev[t], c=c, g=g,
+        ϕ_n=[ϕ_n[k′][t] for k′ in 1:k+1], 
+        ϕstar_n=[ϕstar_n[k′][t] for k′ in 1:k+1],
+        ϕstar_nm1=[ϕstar_nm1[k′][t] for k′ in 1:k+1]), 
+      k+1)
+
+    f_prev[t] .= f(t - state.u_cache.k + k) # f for the next ϕ_and_ϕstar!
+    
+    for k′ in 1:kmax
+      ϕstar_nm1[k′][t], ϕstar_n[k′][t] = ϕstar_n[k′][t], ϕstar_nm1[k′][t]
+    end
+  end
 end
 
 # Explicit Adams: Section III.5 Eq. (5.5)
@@ -99,7 +120,7 @@ function ϕ_np1!(cache, du, k, T)
 end
 
 # Control order: Section III.7 Eq. (7.7)
-function adjust_order!(f_next, state, cache, max_k, atol, rtol)
+function adjust_order!(f_next, state, cache, kmax, atol, rtol)
   @inbounds begin
     @unpack t = state
     @unpack u_prev,u_next,g,ϕ_np1,ϕstar_n,k,u_erro = cache
@@ -115,7 +136,7 @@ function adjust_order!(f_next, state, cache, max_k, atol, rtol)
     f_next = VectorOfArray(collect(f_next))
 
     if length(t)<=5 || k<3
-      cache.k = min(k+1, 3, max_k)
+      cache.k = min(k+1, 3, kmax)
     else
       error_k1 = error_estimate!(u_erro, (g[k]-g[k-1]) * ϕ_np1[k], u_prev, u_next, atol, rtol) |> norm
       error_k2 = error_estimate!(u_erro, (g[k-1]-g[k-2]) * ϕ_np1[k-1], u_prev, u_next, atol, rtol) |> norm
@@ -125,7 +146,7 @@ function adjust_order!(f_next, state, cache, max_k, atol, rtol)
         foreach(t′ -> ϕ_np1!(cache, f_next[t′], k+2, t′), eachindex(state.t))
         error_kstar = error_estimate!(u_erro, (t[end] - t[end-1]) * γstar[k+2] * ϕ_np1[k+2], u_prev, u_next, atol, rtol) |> norm
         if error_kstar < cache.error_k
-          cache.k = min(k+1, max_k)
+          cache.k = min(k+1, kmax)
           cache.error_k = one(cache.error_k)   # constant dt
         end
       end

@@ -94,7 +94,7 @@ function kbsolve(f_vert, f_diag, u0, (t0, tmax);
     u_next = predict!(state, state.u_cache)
     foreach(t′ -> update_twotime!(u_next[t′],t,t′), 1:t)
 
-    # Corrector NOTE: u[t,t′] is *corrected* before valuating t′+1
+    # Corrector NOTE: u[t,t′] is *corrected* before valuating t′+1 [implicit!]
     for t′ in 1:t
       u_next = correct!(f(t,t′), state.u_cache, t′)
       update_twotime!(u_next, t, t′)
@@ -103,23 +103,9 @@ function kbsolve(f_vert, f_diag, u0, (t0, tmax);
     # Calculate error and adjust order
     adjust_order!((f(t, t′) for t′ in 1:t), state, state.u_cache, opts.kmax, opts.atol, opts.rtol)
     
-    # Add a new cache for the next time
+    # Add a new cache for the next time if the step is accepted
     if state.u_cache.error_k <= one(state.u_cache.error_k)
-      times = state.t
-
-      t0 = max(t - state.u_cache.k, 1)
-      u0 = [x[t0,t] for x in state.u]
-      f0 = f_vert(state.u, state.t, t0, t)
-      cache = VCABMCache{eltype(state.t)}(opts.kmax, u0, f0)
-
-      for t′ in (t0+1):t
-        state.t = view(times,1:t′); ϕ_and_ϕstar!(state, cache, cache.k+1)
-        cache.u_next = [x[t′,t] for x in state.u]
-        update_cache!(f_vert(state.u, times, t′, t), cache, state.u_cache.k)
-      end
-
-      insert_cache!(state.u_cache, t, cache)
-      state.t = times
+      extend_cache!(t′ -> f_vert(state.u, state.t, t′, t), state, opts.kmax)
     end
   end # timeloop!
   
