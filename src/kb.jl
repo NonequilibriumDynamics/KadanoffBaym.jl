@@ -73,40 +73,28 @@ function kbsolve(f_vert, f_diag, u0, (t0, tmax);
 
     KBState(u0,v0, [t0; last(t0) + opts.dtini], cache)
   end
-
-  function f(t1,t2)
-    if isequal(t1, t2)
-      f_diag(state.u, state.t, t1)
-    else
-      f_vert(state.u, state.t, t1, t2)
-    end
-  end
-  function update_twotime!(u_next,t1,t2)
-    foreach((u,u′) -> u[t1,t2] = u′, state.u, u_next)
-    update_time(state.t, t1, t2)
-  end
   
   while timeloop!(state,state.u_cache,tmax,opts)
-    # Current time index
     t = length(state.t)
 
-    # Predictor
-    u_next = predict!(state, state.u_cache)
-    foreach(t′ -> update_twotime!(u_next[t′],t,t′), 1:t)
+    f(t′) = isequal(t,t′) ? f_diag(state.u, state.t, t) : f_vert(state.u, state.t, t, t′)
 
-    # Corrector NOTE: u[t,t′] is *corrected* before valuating t′+1 [implicit!]
+    # Predictor (explicit)
+    u_next = predict!(state.t, state.u_cache)
     for t′ in 1:t
-      u_next = correct!(f(t,t′), state.u_cache, t′)
-      update_twotime!(u_next, t, t′)
+      foreach((u,u′) -> u[t,t′] = u′, state.u, u_next[t′])
+      update_time(state.t, t, t′)
     end
 
-    # Calculate error and adjust order
-    adjust_order!((f(t, t′) for t′ in 1:t), state, state.u_cache, opts.kmax, opts.atol, opts.rtol)
-    
-    # Add a new cache for the next time if the step is accepted
-    if state.u_cache.error_k <= one(state.u_cache.error_k)
-      extend_cache!(t′ -> f_vert(state.u, state.t, t′, t), state, opts.kmax)
+    # Corrector (implicit) NOTE: u[t,t′] must be *corrected* before evaluating t′+1
+    for t′ in 1:t
+      u_next = correct!(f(t′), state.u_cache, t′)
+      foreach((u,u′) -> u[t,t′] = u′, state.u, u_next)
+      update_time(state.t, t, t′)
     end
+
+    # Calculate error and add a new cache entry and adjust order if the step is accepted
+    adjust_order!(t′ -> f_vert(state.u, state.t, t′, t), (f(t′) for t′ in 1:t), state, state.u_cache, opts.kmax, opts.atol, opts.rtol)
   end # timeloop!
   
   return state
