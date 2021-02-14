@@ -38,42 +38,48 @@ mutable struct VCABMCache{T,U}
   k::Int
   error_k::T
 
-  function VCABMCache{T}(max_k, u_prev::U, f_prev) where {T,U} # k = 1
-    ϕ_n = [zero.(f_prev) for _ in 1:max_k+1]
-    ϕstar_nm = [zero.(f_prev) for _ in 1:max_k+1]
-    ϕstar_n = [zero.(f_prev) for _ in 1:max_k+1]
-    ϕ_np = [zero.(f_prev) for _ in 1:max_k+2]
+  function VCABMCache{T}(kmax, u_prev::U, f_prev::U) where {T,U} # k = 1
+    ϕ_n = [zero.(f_prev) for _ in 1:kmax+1]
+    ϕstar_nm = [zero.(f_prev) for _ in 1:kmax+1]
+    ϕstar_n = [zero.(f_prev) for _ in 1:kmax+1]
+    ϕ_np = [zero.(f_prev) for _ in 1:kmax+2]
     new{T,U}(
       u_prev,zero.(u_prev),zero.(u_prev),f_prev,
       ϕ_n,ϕ_np,ϕstar_n,ϕstar_nm,
-      zeros(T,max_k+1,max_k+1),zeros(T,max_k+1),1,T(Inf))
+      zeros(T,kmax+1,kmax+1),zeros(T,kmax+1),1,T(Inf))
   end
 end
 
-function extend_cache!(f, state, kmax)
-  t = length(state.t)
-  t0 = max(1, t - state.u_cache.k)
-  cache = VCABMCache{eltype(state.t)}(kmax, [x[t,t] for x in state.u], f(t))
+function extend_cache!(f_vert, times, cache, kmax)
+  @unpack f_prev, u_prev, u_next, u_erro, ϕ_n, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, c, g, k = cache
+  t = length(times)
 
+  # Insert new terms for `f_vert` at `(t,t)`
+  insert!(f_prev.u, t, f_vert(t))
+  insert!(u_prev.u, t, copy.(u_prev[t]))
+  insert!(u_next.u, t, zero.(u_prev[t]))
+  insert!(u_erro.u, t, zero.(u_erro[t]))
+
+  # And calculate the ϕs
+  _ϕ_n = [zero.(f_prev[t]) for _ in 1:kmax+1]
+  _ϕ_np1 = [zero.(f_prev[t]) for _ in 1:kmax+2]
+  _ϕstar_n = [zero.(f_prev[t]) for _ in 1:kmax+1]
+  _ϕstar_nm1 = [zero.(f_prev[t]) for _ in 1:kmax+1]
+
+  t0 = max(1, t - k)
   for t′ in (t0+1):t
-    ϕ_and_ϕstar!(view(state.t,1:t′), 
-      (f_prev=f(t′-1), c=state.u_cache.c, g=state.u_cache.g,
-        ϕ_n=cache.ϕ_n, 
-        ϕstar_n=cache.ϕstar_n,
-        ϕstar_nm1=cache.ϕstar_nm1), (t′-t0)+1)
-    cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
+    ϕ_and_ϕstar!(view(times,1:t′), 
+      (f_prev=f_vert(t′-1), c=c, g=g,
+        ϕ_n=_ϕ_n, 
+        ϕstar_n=_ϕstar_n,
+        ϕstar_nm1=_ϕstar_nm1), (t′-t0)+1)
+    _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
   end
 
-  insert!(state.u_cache.u_prev.u, t, copy(cache.u_prev))
-  insert!(state.u_cache.u_next.u, t, copy(cache.u_prev))
-  insert!(state.u_cache.f_prev.u, t, copy(cache.f_prev))
-  insert!(state.u_cache.u_erro.u, t, copy(cache.u_erro))
-  for k in 1:kmax+1
-    insert!(state.u_cache.ϕ_np1[k].u, t, cache.ϕ_np1[k])
-    insert!(state.u_cache.ϕ_n[k].u, t, cache.ϕ_n[k])
-    insert!(state.u_cache.ϕstar_nm1[k].u, t, cache.ϕstar_nm1[k])
-    insert!(state.u_cache.ϕstar_n[k].u, t, cache.ϕstar_n[k])
-  end
+  foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕ_n, _ϕ_n)
+  foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕ_np1, _ϕ_np1)
+  foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕstar_n, _ϕstar_n)
+  foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕstar_nm1, _ϕstar_nm1)
 end
 
 # Explicit Adams: Section III.5 Eq. (5.5)
@@ -90,13 +96,13 @@ function predict!(times, cache)
 end
 
 # Implicit Adams: Section III.5 Eq (5.7)
-function correct!(du, cache, T)
+function correct!(du, cache)
   @unpack u_next,g,ϕ_np1,ϕstar_n,k = cache
   @inbounds begin
-    @views ϕ_np1!((ϕ_np1 = [ϕ_np1[k][T] for k=1:k+1], ϕstar_n = [ϕstar_n[k][T] for k=1:k+1]), du, k+1)
-    @. u_next[T] = muladd(g[k], ϕ_np1[k][T], u_next[T])
+    ϕ_np1!(cache, du, k+1)
+    @. u_next = muladd(g[k], ϕ_np1[k], u_next)
   end
-  u_next[T]
+  u_next
 end
 
 function ϕ_np1!(cache, du, k)
@@ -144,7 +150,7 @@ function adjust_order!(f_vert, f, state, cache, kmax, atol, rtol)
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
 
     # Add vertical cache at u[t,t]. NOTE: investigate performance before evaluating `f_prev`
-    extend_cache!(f_vert, state, kmax)
+    extend_cache!(f_vert, state.t, cache, kmax)
   end
 end
 

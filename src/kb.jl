@@ -79,17 +79,17 @@ function kbsolve(f_vert, f_diag, u0, (t0, tmax);
 
     f(t′) = isequal(t,t′) ? f_diag(state.u, state.t, t) : f_vert(state.u, state.t, t, t′)
 
-    # Predictor (explicit)
+    # Predictor
     u_next = predict!(state.t, state.u_cache)
     for t′ in 1:t
       foreach((u,u′) -> u[t,t′] = u′, state.u, u_next[t′])
       update_time(state.t, t, t′)
     end
 
-    # Corrector (implicit) NOTE: u[t,t′] must be *corrected* before evaluating t′+1
+    # Corrector
+    u_next = correct!(VectorOfArray([f(t′) for t′ in 1:t]), state.u_cache)
     for t′ in 1:t
-      u_next = correct!(f(t′), state.u_cache, t′)
-      foreach((u,u′) -> u[t,t′] = u′, state.u, u_next)
+      foreach((u,u′) -> u[t,t′] = u′, state.u, u_next[t′])
       update_time(state.t, t, t′)
     end
 
