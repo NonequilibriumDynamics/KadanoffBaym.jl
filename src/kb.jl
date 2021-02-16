@@ -93,7 +93,7 @@ function kbsolve(f_vert, f_diag, u0, (t0, tmax);
       update_time(state.t, t, t′)
     end
 
-    # Calculate error and add a new cache entry and adjust order if the step is accepted
+    # Calculate error and, if the step is accepted, adjust order and add a new cache entry
     adjust_order!(t′ -> f_vert(state.u, state.t, t′, t), (f(t′) for t′ in 1:t), state, state.u_cache, opts.kmax, opts.atol, opts.rtol)
   end # timeloop!
   

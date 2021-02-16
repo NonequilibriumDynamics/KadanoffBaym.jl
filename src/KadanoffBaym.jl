@@ -3,7 +3,7 @@ module KadanoffBaym
 using Base: @propagate_inbounds, front
 
 using LinearAlgebra
-using Parameters: @unpack
+using UnPack
 using EllipsisNotation
 using Requires
 using RecursiveArrayTools
