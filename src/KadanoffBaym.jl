@@ -1,7 +1,5 @@
 module KadanoffBaym
 
-using Base: @propagate_inbounds, front
-
 using LinearAlgebra
 using UnPack
 using EllipsisNotation
