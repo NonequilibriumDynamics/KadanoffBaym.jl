@@ -26,3 +26,17 @@ function volterra_correct(v_next, kernel, cache)
     state.t = times[1:ti]
   end
 end
+
+# function f(t1, t2, predict::Bool)
+#   kernel(t) = isequal(t1, t2) ? t -> kernel_diag(state.t,t1,t) : t -> kernel_vert(state.t,t1,t2,t)
+  
+#   if predict
+#     v′ = volterra_predict(kernel, state, caches.master)
+#   else
+#     v_next = [v[t,t′] for x in v]
+#     v′ = volterra_correct(v_next, kernel, caches.master)
+#   end
+
+#   foreach((v,v′) -> v[t,t′] = v′, v, v′)
+#   return isequal(t1, t2) ? f_diag(state.u..., state.t, t1) : f_vert(state.u..., state.t, t1, t2)
+# end
