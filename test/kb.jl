@@ -1,8 +1,3 @@
-using Test
-
-include("../src/KadanoffBaym.jl")
-using .KadanoffBaym
-
 λ = 0.2
 
 # Define your Green functions at t0

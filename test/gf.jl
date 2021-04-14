@@ -1,6 +1,3 @@
-using Test, BenchmarkTools
-using KadanoffBaym
-
 N = 10
 
 @testset "2D GF" begin
