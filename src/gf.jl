@@ -31,8 +31,8 @@ struct MixedGreater <: GreenFunctionType end
 """
     GreenFunction
 
-A 2-time Green function with array indexing operations respecting the 
-symmetries of the Green function.
+A 2-time Green function with array indexing respecting the symmetries of the 
+Green function.
 
 _Note_: The time-dimensions **must** be the last dimensions of the `data` 
 array. When indexing with just 2 indices, the time-arguments will be chosen.
@@ -44,210 +44,144 @@ spin_dim = 2
 gf = GreenFunction(zeros(spin_dim, spin_dim, time_dim, time_dim), Lesser)
 ```
 """
-mutable struct GreenFunction{T,S<:AbstractArray{<:T},U<:GreenFunctionType}
-  data::S
+mutable struct GreenFunction{T,N,A,U<:GreenFunctionType} <: AbstractArray{T,N}
+  data::A
 end
 
-function GreenFunction(A::AbstractArray, U::Type{<:GreenFunctionType})
-  if U <: Union{Greater, Lesser}
-    @assert ==(last2(size(A))...) "Time dimension ($(last2(size(A)))) must be a square"
+function GreenFunction(G::AbstractArray, U::Type{<:GreenFunctionType})
+  if U <: Union{Classical, Greater, Lesser}
+    @assert ==(last2(size(G))...) "Time dimension ($(last2(size(G)))) must be a square"
   end
-  GF_type(typeof(A), U)(A)
+  GreenFunction{eltype(G), ndims(G), typeof(G), U}(G)
 end
 
-function GF_type(::Type{S}, U) where {T<:Number,S<:AbstractArray{T}}
-  GreenFunction{T,S,U}
-end
+@inline Base.size(G::GreenFunction, I...) = size(G.data, I...)
+@inline Base.length(G::GreenFunction) = length(G.data)
+@inline Base.ndims(G::GreenFunction) = ndims(G.data)
+@inline Base.axes(G::GreenFunction, d) = axes(G.data, d)
 
-# function GF_type(::Type{S}, U) where {T<:AbstractArray,S<:AbstractArray{T}}
-#   GreenFunction{AbstractArray,S,U}
-# end
+Base.copy(G::GreenFunction) = oftype(G, copy(G.data))
+Base.eltype(::GreenFunction{T}) where {T} = T
 
-Base.copy(A::GreenFunction) = oftype(A, copy(A.data))
-Base.eltype(::GreenFunction{T,S,U}) where {T,S,U} = eltype(T)
+@inline Base.getindex(::GreenFunction{T,S,<:Union{Classical,Greater,Lesser}}, I) where {T,S} = error("Single indexing not allowed")
+Base.@propagate_inbounds Base.getindex(G::GreenFunction{T,N,A,<:Union{Classical,Greater,Lesser}}, I...) where {T,N,A} = G.data[..,I...]
+Base.@propagate_inbounds Base.getindex(G::GreenFunction{T,N,A,<:Union{MixedGreater,MixedLesser}}, I...) where {T,N,A} = G.data[..,I...]
 
-@inline Base.size(A::GreenFunction,I...) = size(A.data,I...)
-@inline Base.length(A::GreenFunction) = length(A.data)
-@inline Base.ndims(A::GreenFunction{T,S,U}) where {T,S,U} = ndims(S)
-# @inline Base.axes(A::GreenFunction, d) = axes(A.data, d)
-
-@inline Base.getindex(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, I) where {T, S} = error("Single indexing not allowed")
-Base.@propagate_inbounds Base.getindex(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, I...) where {T, S} = A.data[..,I...]
-
-@inline Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, I) where {T, S} = error("Single indexing not allowed")
-Base.@propagate_inbounds function Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, i::Int,::Colon) where {T, S}
-  for j in 1:size(A,ndims(A))
-    A[i,j] = v[..,j]
-  end
-end
-Base.@propagate_inbounds function Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, u::UnitRange, i::Int) where {T, S}
-  for j in u
-    A[j,i] = v[..,j]
-  end
-end
-Base.@propagate_inbounds function Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, i::Int,u::UnitRange) where {T, S}
-  for j in u
-    A[i,j] = v[..,j]
-  end
-end
-Base.@propagate_inbounds function Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, ::Colon, i::Int) where {T, S}
-  for j in 1:size(A,ndims(A))
-    A[j,i] = v[..,j]
-  end
-end
-Base.@propagate_inbounds function Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, I...) where {T, S}
+@inline Base.setindex!(::GreenFunction{T,S,<:Union{Classical,Greater,Lesser}}, v, I) where {T,S} = error("Single indexing not allowed")
+Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,<:Union{Greater,Lesser}}, v, I...) where {T,N,A}
   ts = last2(I)
   jj = front2(I)
 
   if ==(ts...)
-    A.data[..,jj...,ts...] = v
+    G.data[..,jj...,ts...] = v
   else 
-    A.data[..,jj...,ts...] = v
-    A.data[..,jj...,reverse(ts)...] = -adjoint(v)
+    G.data[..,jj...,ts...] = v
+    G.data[..,jj...,reverse(ts)...] = -adjoint(v)
   end
 end
+Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,Classical}, v, I...) where {T,N,A}
+  ts = last2(I)
+  jj = front2(I)
 
-const MixedGOL{T,S} = GreenFunction{T,S,<:Union{MixedGreater,MixedLesser}}
-Base.@propagate_inbounds function Base.getindex(A::MixedGOL, I::Int64)
-  Base.getindex(A.data, .., I)
-end
-Base.@propagate_inbounds function Base.setindex!(A::MixedGOL, v, I::Int64)
-  Base.setindex!(A.data, v, .., I)
-end
-
-const Classical_{T,S} = GreenFunction{T,S,Classical}
-@inline function Base.getindex(A::Classical_, I::Union{Int64,Colon})
-  error("Single indexing not allowed")
-end
-Base.@propagate_inbounds function Base.getindex(A::Classical_, I::Vararg{Union{Int64,Colon},2})
-  Base.getindex(A.data, .., I...) 
-end
-Base.@propagate_inbounds function Base.getindex(A::Classical_, I...)
-  Base.getindex(A.data, I...)
-end
-Base.@propagate_inbounds function Base.setindex!(A::Classical_, v, I::Union{Int64,Colon})
-  error("Single indexing not allowed")
-end
-Base.@propagate_inbounds function Base.setindex!(A::Classical_, v, F::Vararg{Union{Int64,Colon}, 2})
-  __setindex!(A, v, (..,), F)
-end
-Base.@propagate_inbounds function Base.setindex!(A::Classical_, v, I...)
-  __setindex!(A, v, front_last2(I)...)
-end
-Base.@propagate_inbounds function __setindex!(A::Classical_, v, F, L::Tuple{F1,F2}) where {F1,F2}
-  if ==(L...)
-    setindex!(A.data, v, F..., L...)
+  if ==(ts...)
+    G.data[..,jj...,ts...] = v
   else 
-    setindex!(A.data, v, F..., L...)
-    setindex!(A.data, v, F..., reverse(L)...)
+    G.data[..,jj...,ts...] = v
+    G.data[..,jj...,reverse(ts)...] = v
   end
 end
-
-# Disable broadcasting
-Base.dotview(A::GreenFunction, I...) = error("Not supported")
-
-# NOTE: This is absolutely fundamental to make sure that getelement of VectorOfArray returns non-eltype-Any arrays
-# RecursiveArrayTools.VectorOfArray(vec::AbstractVector{GreenFunction}, dims::NTuple{N}) where {N} = error("eltype of the GreenFunctions must be the same")
-# RecursiveArrayTools.VectorOfArray(vec::AbstractVector{GreenFunction{T,S}}, dims::NTuple{N}) where {T, S, N} = VectorOfArray{T, N, typeof(vec)}(vec)
+Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,<:Union{MixedGreater,MixedLesser}}, v, I...) where {T,N,A}
+  G.data[..,I] = v
+end
 
 for g in (:GreenFunction, )
   for f in (:-, :conj, :real, :imag, :adjoint, :transpose, :inv, :zero)
-    @eval (Base.$f)(A::$g{T,S,U}) where {T,S,U} = $g(Base.$f(A.data), U)
+    @eval (Base.$f)(G::$g{T,N,A,U}) where {T,N,A,U} = $g(Base.$f(G.data), U)
   end
 
   for f in (:+, :-, :/, :\, :*)
     if f != :/  
-      @eval (Base.$f)(A::Number, B::$g{T,S,U}) where {T,S,U} = $g(Base.$f(A, B.data), U)
+      @eval (Base.$f)(a::Number, G::$g{T,N,A,U}) where {T,N,A,U} = $g(Base.$f(a, G.data), U)
     end
     if f != :\
-        @eval (Base.$f)(A::$g{T,S,U}, B::Number) where {T,S,U} = $g(Base.$f(A.data, B), U)
+        @eval (Base.$f)(G::$g{T,N,A,U}, b::Number) where {T,N,A,U} = $g(Base.$f(G.data, b), U)
     end
   end
 
-  for f in (:+, :-, :\, :/)
-      @eval (Base.$f)(A::$g{T,S,U}, B::$g{T,S,U}) where {T,S,U} = $g(Base.$f(A.data, B.data), U)
+  for f in (:+, :-, :\, :/, :*)
+      @eval (Base.$f)(G1::$g{T,N,A,U}, G2::$g{T,N,A,U}) where {T,N,A,U} = $g(Base.$f(G1.data, G2.data), U)
   end
 
-  @eval Base.:*(A::$g{T,S,U}, B::$g{T,S,<:Union{Greater,Lesser}}) where{T,S,U<:Union{Greater,Lesser}} = $g(Base.:*(A.data, B.data), U)
-
-  @eval Base.:+(A::$g{T,S,U}, B::$g{T,S,U}...) where {T,S,U} = Base.+(A.data, getfield.(B,:data)...)
+  @eval Base.:+(G::$g{T,N,A,U}, Gs::$g{T,N,A,U}...) where {T,N,A,U} = Base.+(G.data, getfield.(Gs,:data)...)
 end
 
 function Base.show(io::IO, x::GreenFunction)
-  if get(io, :compact, false) || get(io, :typeinfo, nothing) == GreenFunction
+  # if get(io, :compact, false) || get(io, :typeinfo, nothing) == GreenFunction
     Base.show_default(IOContext(io, :limit => true), x)
-  else
-    # dump(IOContext(io, :limit => true), p, maxdepth=1)
-    for field in fieldnames(typeof(x))
-      if field === :data
-        print(io, "\ndata: ")
-        Base.show(io, MIME"text/plain"(), x.data)
-      else
-        Base.show(io, getfield(x, field))
-      end
-    end
-  end
-end
-
-Base.resize!(A::GreenFunction, t::Int) = Base.resize!(A, t, t)
-function Base.resize!(A::GreenFunction, t::Vararg{Int,2})
-  # if eltype(A) <: AbstractArray
-  #   newdata = fill(eltype(A)(undef,t...,size(first(A))...))
   # else
-  newdata = typeof(A)(zeros(eltype(A),front2(size(A))...,t...))
-  # replace!(newdata.data, 0.0=>NaN)
+  #   # dump(IOContext(io, :limit => true), p, maxdepth=1)
+  #   for field in fieldnames(typeof(x))
+  #     if field === :data
+  #       print(io, "\ndata: ")
+  #       Base.show(io, MIME"text/plain"(), x.data)
+  #     else
+  #       Base.show(io, getfield(x, field))
+  #     end
+  #   end
   # end
-
-  T = min(last(size(A)), last(t))
-
-  for t=1:T, t′=1:T
-    newdata.data[..,t,t′] = A.data[..,t,t′]
-  end
-
-  A.data = newdata.data
-  return A
 end
 
-Base.resize!(A::MixedGOL, t::Int) = Base.resize!(A.data, Base.front(size(A))..., t)
+Base.resize!(A::GreenFunction, t::Int) = A.data = _resize!(A.data, t)
+
+function _resize!(a::Array{T,N}, t::Int) where {T,N}
+  a′ = Array{T,N}(undef, front2(size(a))..., t, t)
+
+  k =  min(last(size(a)), t)
+  for t in 1:k, t′ in 1:k
+      a′[..,t′,t] = a[..,t′,t]
+  end
+
+  return a′
+end
 
 """
-    UnstructuredGreenFunction
+    SkewHermitianArray
 
-  This 2-time GreenFunction stores its data in a lower-triangular matrix
-configuration. This allows for a flexible resizing of the time-dimension, but 
-array indexing might be slower due to the data not being aligned.
+Provides a different (not necessarily more efficient) data storage for 
+skew-Hermitian data
 """
-struct UnstructuredGreenFunction{T,N,U} <: AbstractArray{T,N}
+struct SkewHermitianArray{T,N} <: AbstractArray{T,N}
   data::Vector{Vector{T}}
-  
-  function UnstructuredGreenFunction(a::T, U::Type{<:GreenFunctionType}) where {T<:Union{Number,AbstractArray}}
-    new{T,2+ndims(a),U}([[a]])
+
+  function SkewHermitianArray(a::T) where {T<:Union{Number, AbstractArray}}
+    new{T,2+ndims(a)}([[a]])
   end
 end
 
+@inline Base.size(a::SkewHermitianArray{<:Number}) = (length(a.data), length(a.data))
+@inline Base.size(a::SkewHermitianArray{<:AbstractArray}) = (size(a.data[1][1])..., length(a.data), length(a.data))
 
-function Base.getindex(a::UnstructuredGreenFunction{T,N,U}, i::Int, j::Int) where {T,N,U<:Union{Greater,Lesser}}
+function Base.getindex(a::SkewHermitianArray, i::Int, j::Int)
   return (i >= j) ? a.data[i-j+1][j] : -adjoint(a.data[j-i+1][i])
 end
 
-function Base.setindex!(a::UnstructuredGreenFunction{T,N,U}, v, i::Int, j::Int) where {T,N,U<:Union{Greater,Lesser}}
+function Base.setindex!(a::SkewHermitianArray, v, i::Int, j::Int)
   if i >= j
-    Base.setindex!(a.data[i-j+1],v,j)
+    a.data[i-j+1][j] = v
   else
-    Base.setindex!(a.data[j-i+1],-adjoint(v),i)
+    a.data[j-i+1][i] = -adjoint(v)
   end
 end
 
-@inline Base.size(a::UnstructuredGreenFunction) = (length(a.data), length(first(a.data)), size(first(first(a.data)))...)
-
-function Base.resize!(a::UnstructuredGreenFunction, i::Int, j::Int)
+function _resize!(a::SkewHermitianArray, t::Int)
+  @assert false "Currently broken"
   col = size(a, 2)
   
-  resize!(a.data, j)
-  for k in 1:min(col, j)
-    resize!(a.data[k], i-k+1)
+  resize!(a.data, t)
+  for k in 1:min(col, t)
+    resize!(a.data[k], t-k+1)
   end
-  for k in min(col,j)+1:i
-    a.data[k] = Array{eltype(a)}(undef, i-k+1)
+  for k in min(col,t)+1:t
+    a.data[k] = Array{eltype(a)}(undef, t-k+1)
   end
 end
