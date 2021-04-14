@@ -1,6 +1,10 @@
 abstract type GreenFunctionType end
 
 """
+"""
+struct Classical <: GreenFunctionType end
+
+"""
 Defined as
     G^<(t,t') = -i < a^{\\dagger}(t') a(t) > for t ≺ t'
 """
@@ -25,10 +29,6 @@ Defined as
 struct MixedGreater <: GreenFunctionType end
 
 """
-"""
-struct Classical <: GreenFunctionType end
-
-"""
     GreenFunction
 
 A 2-time Green function with array indexing operations respecting the 
@@ -49,7 +49,7 @@ mutable struct GreenFunction{T,S<:AbstractArray{<:T},U<:GreenFunctionType}
 end
 
 function GreenFunction(A::AbstractArray, U::Type{<:GreenFunctionType})
-  if U <: GreaterOrLesser
+  if U <: Union{Greater, Lesser}
     @assert ==(last2(size(A))...) "Time dimension ($(last2(size(A)))) must be a square"
   end
   GF_type(typeof(A), U)(A)
@@ -68,42 +68,50 @@ Base.eltype(::GreenFunction{T,S,U}) where {T,S,U} = eltype(T)
 
 @inline Base.size(A::GreenFunction,I...) = size(A.data,I...)
 @inline Base.length(A::GreenFunction) = length(A.data)
-# @inline Base.ndims(A::GreenFunction{T,S,U}) where {T,S,U} = ndims(S)
+@inline Base.ndims(A::GreenFunction{T,S,U}) where {T,S,U} = ndims(S)
 # @inline Base.axes(A::GreenFunction, d) = axes(A.data, d)
 
-const GreaterOrLesser{T,S} = GreenFunction{T,S,<:Union{Greater,Lesser}}
-@inline function Base.getindex(A::GreaterOrLesser, I::Union{Int64,Colon})
-  error("Single indexing not allowed")
+@inline Base.getindex(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, I) where {T, S} = error("Single indexing not allowed")
+Base.@propagate_inbounds Base.getindex(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, I...) where {T, S} = A.data[..,I...]
+
+@inline Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, I) where {T, S} = error("Single indexing not allowed")
+Base.@propagate_inbounds function Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, i::Int,::Colon) where {T, S}
+  for j in 1:size(A,ndims(A))
+    A[i,j] = v[..,j]
+  end
 end
-@propagate_inbounds function Base.getindex(A::GreaterOrLesser, I::Vararg{Union{Int64,Colon},2})
-  Base.getindex(A.data, .., I...) 
+Base.@propagate_inbounds function Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, u::UnitRange, i::Int) where {T, S}
+  for j in u
+    A[j,i] = v[..,j]
+  end
 end
-@propagate_inbounds function Base.getindex(A::GreaterOrLesser, I...)
-  Base.getindex(A.data, I...)
+Base.@propagate_inbounds function Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, i::Int,u::UnitRange) where {T, S}
+  for j in u
+    A[i,j] = v[..,j]
+  end
 end
-@propagate_inbounds function Base.setindex!(A::GreaterOrLesser, v, I::Union{Int64,Colon})
-  error("Single indexing not allowed")
+Base.@propagate_inbounds function Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, ::Colon, i::Int) where {T, S}
+  for j in 1:size(A,ndims(A))
+    A[j,i] = v[..,j]
+  end
 end
-@propagate_inbounds function Base.setindex!(A::GreaterOrLesser, v, F::Vararg{Union{Int64,Colon}, 2})
-  __setindex!(A, v, (..,), F)
-end
-@propagate_inbounds function Base.setindex!(A::GreaterOrLesser, v, I...)
-  __setindex!(A, v, front_last2(I)...)
-end
-@propagate_inbounds function __setindex!(A::GreaterOrLesser, v, F, L::Tuple{F1,F2}) where {F1,F2}
-  if ==(L...)
-    setindex!(A.data, v, F..., L...)
+Base.@propagate_inbounds function Base.setindex!(A::GreenFunction{T,S,<:Union{Greater,Lesser}}, v, I...) where {T, S}
+  ts = last2(I)
+  jj = front2(I)
+
+  if ==(ts...)
+    A.data[..,jj...,ts...] = v
   else 
-    setindex!(A.data, v, F..., L...)
-    setindex!(A.data, -adjoint(v), F..., reverse(L)...)
+    A.data[..,jj...,ts...] = v
+    A.data[..,jj...,reverse(ts)...] = -adjoint(v)
   end
 end
 
 const MixedGOL{T,S} = GreenFunction{T,S,<:Union{MixedGreater,MixedLesser}}
-@propagate_inbounds function Base.getindex(A::MixedGOL, I::Int64)
+Base.@propagate_inbounds function Base.getindex(A::MixedGOL, I::Int64)
   Base.getindex(A.data, .., I)
 end
-@propagate_inbounds function Base.setindex!(A::MixedGOL, v, I::Int64)
+Base.@propagate_inbounds function Base.setindex!(A::MixedGOL, v, I::Int64)
   Base.setindex!(A.data, v, .., I)
 end
 
@@ -111,22 +119,22 @@ const Classical_{T,S} = GreenFunction{T,S,Classical}
 @inline function Base.getindex(A::Classical_, I::Union{Int64,Colon})
   error("Single indexing not allowed")
 end
-@propagate_inbounds function Base.getindex(A::Classical_, I::Vararg{Union{Int64,Colon},2})
+Base.@propagate_inbounds function Base.getindex(A::Classical_, I::Vararg{Union{Int64,Colon},2})
   Base.getindex(A.data, .., I...) 
 end
-@propagate_inbounds function Base.getindex(A::Classical_, I...)
+Base.@propagate_inbounds function Base.getindex(A::Classical_, I...)
   Base.getindex(A.data, I...)
 end
-@propagate_inbounds function Base.setindex!(A::Classical_, v, I::Union{Int64,Colon})
+Base.@propagate_inbounds function Base.setindex!(A::Classical_, v, I::Union{Int64,Colon})
   error("Single indexing not allowed")
 end
-@propagate_inbounds function Base.setindex!(A::Classical_, v, F::Vararg{Union{Int64,Colon}, 2})
+Base.@propagate_inbounds function Base.setindex!(A::Classical_, v, F::Vararg{Union{Int64,Colon}, 2})
   __setindex!(A, v, (..,), F)
 end
-@propagate_inbounds function Base.setindex!(A::Classical_, v, I...)
+Base.@propagate_inbounds function Base.setindex!(A::Classical_, v, I...)
   __setindex!(A, v, front_last2(I)...)
 end
-@propagate_inbounds function __setindex!(A::Classical_, v, F, L::Tuple{F1,F2}) where {F1,F2}
+Base.@propagate_inbounds function __setindex!(A::Classical_, v, F, L::Tuple{F1,F2}) where {F1,F2}
   if ==(L...)
     setindex!(A.data, v, F..., L...)
   else 
@@ -181,12 +189,8 @@ function Base.show(io::IO, x::GreenFunction)
   end
 end
 
-# Base.resize!(A::GreaterOrLesser, t::Int) = Base.resize!(A, t, t)
-# function Base.resize!(A::GreaterOrLesser, t::Vararg{Int,2})
-
 Base.resize!(A::GreenFunction, t::Int) = Base.resize!(A, t, t)
 function Base.resize!(A::GreenFunction, t::Vararg{Int,2})
-
   # if eltype(A) <: AbstractArray
   #   newdata = fill(eltype(A)(undef,t...,size(first(A))...))
   # else
@@ -197,7 +201,6 @@ function Base.resize!(A::GreenFunction, t::Vararg{Int,2})
   T = min(last(size(A)), last(t))
 
   for t=1:T, t′=1:T
-#     newdata.data[t,t′] = A.data[t,t′]
     newdata.data[..,t,t′] = A.data[..,t,t′]
   end
 
@@ -205,7 +208,7 @@ function Base.resize!(A::GreenFunction, t::Vararg{Int,2})
   return A
 end
 
-Base.resize!(A::MixedGOL, t::Int) = Base.resize!(A.data, front(size(A))..., t)
+Base.resize!(A::MixedGOL, t::Int) = Base.resize!(A.data, Base.front(size(A))..., t)
 
 """
     UnstructuredGreenFunction

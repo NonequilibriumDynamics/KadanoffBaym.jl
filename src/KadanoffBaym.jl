@@ -1,23 +1,28 @@
 module KadanoffBaym
 
-using Base: @propagate_inbounds, front
-
 using LinearAlgebra
-using MuladdMacro
-using Parameters: @unpack
-using Reexport
-@reexport using EllipsisNotation
-using FFTW
+using UnPack
+using EllipsisNotation
+using Requires
+using RecursiveArrayTools
 
-export GreenFunction, Lesser, Greater, MixedLesser, MixedGreater
+export GreenFunction, Classical, Lesser, Greater, MixedLesser, MixedGreater
 export kbsolve
-export wigner_transform
 
 include("utils.jl")
 include("gf.jl")
 include("vcabm.jl")
 include("volterra.jl")
 include("kb.jl")
-include("wigner.jl")
+
+function __init__()
+  @require FFTW="7a1cc6ca-52ef-59f5-83cd-3a7055c09341" begin
+    @require Interpolations="a98d9a8b-a2ab-59e6-89dd-64a1c18fca59" begin
+      using .FFTW, .Interpolations
+      include("wigner.jl")
+      export wigner_transform, wigner_transform_itp
+    end
+  end
+end
 
 end # module
