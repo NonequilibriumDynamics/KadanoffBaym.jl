@@ -147,8 +147,8 @@ end
 """
     SkewHermitianArray
 
-Provides a different (not necessarily more efficient) data storage for 
-skew-Hermitian data
+Provides a different (but not necessarily more efficient) data storage for 
+elastic skew-Hermitian data
 """
 struct SkewHermitianArray{T,N} <: AbstractArray{T,N}
   data::Vector{Vector{T}}
@@ -161,11 +161,12 @@ end
 @inline Base.size(a::SkewHermitianArray{<:Number}) = (length(a.data), length(a.data))
 @inline Base.size(a::SkewHermitianArray{<:AbstractArray}) = (size(a.data[1][1])..., length(a.data), length(a.data))
 
-function Base.getindex(a::SkewHermitianArray, i::Int, j::Int)
+Base.getindex(::SkewHermitianArray, I) = error("Single indexing not allowed")
+@inline function Base.getindex(a::SkewHermitianArray{T,N}, i::Int, j::Int) where {T,N}
   return (i >= j) ? a.data[i-j+1][j] : -adjoint(a.data[j-i+1][i])
 end
 
-function Base.setindex!(a::SkewHermitianArray, v, i::Int, j::Int)
+@inline function Base.setindex!(a::SkewHermitianArray, v, i::Int, j::Int)
   if i >= j
     a.data[i-j+1][j] = v
   else
@@ -173,15 +174,15 @@ function Base.setindex!(a::SkewHermitianArray, v, i::Int, j::Int)
   end
 end
 
-function _resize!(a::SkewHermitianArray, t::Int)
-  @assert false "Currently broken"
-  col = size(a, 2)
-  
+function _resize!(a::SkewHermitianArray{T}, t::Int) where {T}
+  l = length(a)
+
   resize!(a.data, t)
-  for k in 1:min(col, t)
+
+  for k in 1:min(l, t)
     resize!(a.data[k], t-k+1)
   end
-  for k in min(col,t)+1:t
-    a.data[k] = Array{eltype(a)}(undef, t-k+1)
+  for k in min(l,t)+1:t
+    a.data[k] = Array{T}(undef, t-k+1)
   end
 end
