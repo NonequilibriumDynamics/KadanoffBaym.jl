@@ -1,45 +1,63 @@
-λ = 0.2
+@testset "1-time benchmark" begin
+    λ = 0.2
 
-# Define your Green functions at t0
-ggf = GreenFunction(zeros(ComplexF64,1,1,1,1), Greater)
-lgf = GreenFunction(1im * ones(ComplexF64,1,1,1,1), Lesser)
+    function fv(u, ts, t, t′)
+        return [1im * u[2][t,t′], 1im * u[1][t,t′] - λ * u[2][t,t′]]
+    end
 
-# Pack them in a VectorOfArray
-u0 = VectorOfArray([ggf, lgf]);
-@assert eltype(u0[1,1,..]) !== Any
+    function fd(u, ts, t)
+        return [0im * u[2][t,t], 0im * u[1][t,t]]
+    end
 
-# Remember that `u` here is also an ArrayPartition-like element
-function f(u, p, t, t′)
-  return VectorOfArray([1im * u[2][t,t′], 1im * u[1][t,t′] - λ * u[2][t,t′]])
+    G = GreenFunction(zeros(ComplexF64,1,1,1,1), Greater)
+    L = GreenFunction(1im * ones(ComplexF64,1,1,1,1), Lesser)
+
+    u0 = [G, L]
+
+    sol = kbsolve(fv, fd, u0, (0.0, 1.0); atol=1e-6, rtol=1e-4);
+
+    function sol1(t, g0, l0)
+        s = sqrt(Complex(λ^2 - 4))
+        return exp(-λ * t / 2) * (l0 * cosh(0.5 * t * s) + (2im * g0 + l0 * λ) * sinh(0.5 * t * s) / s)
+    end
+
+    function sol2(t, g0, l0)
+        s = sqrt(Complex(λ^2 - 4))
+        return exp(-λ * t / 2) * (g0 * cosh(0.5 * t * s) + (2im * l0 - g0 * λ) * sinh(0.5 * t * s) / s)
+    end
+
+    @testset begin
+        for (i, t) in enumerate(sol.t)
+            @test G[i,1][1,1] ≈ sol1(t, L[1,1,1,1], G[1,1,1,1]) atol=1e-6
+            @test L[i,1][1,1] ≈ sol2(t, L[1,1,1,1], G[1,1,1,1]) atol=1e-6
+        end
+    end
 end
 
-# ODE problem is defined by the rhs, initial condition and time span
-tspan = (0.0, 1.0)
-prob = ODEProblem(f, u0, tspan)
+@testset "2-time benchmark" begin
+    λ = 0.2
 
-# Algorithm to timestep is the (Kadanoff-Baym) ABM43 (only really this one exists)
-alg = KB{ABM43}()
+    function fv(u, ts, t, t′)
+        return [-1im * cos(λ * ts[t]) * u[1][t,t′]]
+    end
 
-# This algorithm requires a fixed time
-dt = 0.001
+    function fd(u, ts, t)
+        return [0im * u[1][t,t]]
+    end
 
-sol = solve(prob, alg, dt)
+    L = GreenFunction(-1im * ones(ComplexF64,1,1), Lesser)
 
-function sol1(t, u1_0, u2_0, λ)
-  s = sqrt(Complex(λ^2 - 4))
-  return exp(-λ * t / 2) * (u2_0 * cosh(0.5 * t * s) + (2im * u1_0 + u2_0 * λ) * sinh(0.5 * t * s) / s)
-end
+    sol = kbsolve(fv, fd, [L, ], (0.0, 2.0); atol=1e-9, rtol=1e-6);
 
-function sol2(t, u1_0, u2_0, λ)
-  s = sqrt(Complex(λ^2 - 4))
-  return exp(-λ * t / 2) * (u1_0 * cosh(0.5 * t * s) + (2im * u2_0 - u1_0 * λ) * sinh(0.5 * t * s) / s)
-end
+    function sol1(t, l0)
+        return -1.0im * exp(-1.0im * 1/λ * sin(λ * t))
+    end
 
-times = first.(sol.t[:,1])
-
-@testset begin
-  for (i, t) in Iterators.enumerate(times)
-    @test sol.u[1][:,1][i] ≈ sol1(t, lgf[1,1,1,1], ggf[1,1,1,1], λ)
-    @test sol.u[2][:,1][i] ≈ sol2(t, lgf[1,1,1,1], ggf[1,1,1,1], λ)
-  end
+    @testset begin
+        for (i, tᵢ) in enumerate(sol.t)
+            for (j, tⱼ) in enumerate(sol.t)
+                @test L[i,j] ≈ sol1(tᵢ-tⱼ, L[1,1]) atol=1e-6 rtol=1e-3
+            end
+        end
+    end
 end

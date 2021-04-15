@@ -11,4 +11,8 @@ Requires = "ae029012-a4dd-5104-9daa-d747884805df"
 UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 
 [extras]
+EllipsisNotation = "da5c29d0-fa7d-589e-88eb-ea29b0a81949"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["EllipsisNotation", "Test"]
