@@ -1,5 +1,7 @@
 @testset "1-time benchmark" begin
     λ = 0.2
+    atol=1e-8
+    rtol=1e-5
 
     function fv(u, ts, t, t′)
         return [1im * u[2][t,t′], 1im * u[1][t,t′] - λ * u[2][t,t′]]
@@ -9,12 +11,10 @@
         return [0im * u[2][t,t], 0im * u[1][t,t]]
     end
 
-    G = GreenFunction(zeros(ComplexF64,1,1,1,1), Greater)
-    L = GreenFunction(1im * ones(ComplexF64,1,1,1,1), Lesser)
+    G = GreenFunction(zeros(ComplexF64,1,1), Greater)
+    L = GreenFunction(1im * ones(ComplexF64,1,1), Lesser)
 
-    u0 = [G, L]
-
-    sol = kbsolve(fv, fd, u0, (0.0, 1.0); atol=1e-6, rtol=1e-4);
+    kb = kbsolve(fv, fd, [G, L], (0.0, 100.0); atol=atol, rtol=rtol);
 
     function sol1(t, g0, l0)
         s = sqrt(Complex(λ^2 - 4))
@@ -27,18 +27,18 @@
     end
 
     @testset begin
-        for (i, t) in enumerate(sol.t)
-            @test G[i,1][1,1] ≈ sol1(t, L[1,1,1,1], G[1,1,1,1]) atol=1e-6
-            @test L[i,1][1,1] ≈ sol2(t, L[1,1,1,1], G[1,1,1,1]) atol=1e-6
-        end
+        @test G[:,1] ≈ [sol1(t1, L[1,1], G[1,1]) for t1 in kb.t] atol=1e1atol rtol=1e1rtol
+        @test L[:,1] ≈ [sol2(t1, L[1,1], G[1,1]) for t1 in kb.t] atol=1e1atol rtol=1e1rtol
     end
 end
 
 @testset "2-time benchmark" begin
     λ = 0.2
+    atol=1e-8
+    rtol=1e-5
 
     function fv(u, ts, t, t′)
-        return [-1im * cos(λ * ts[t]) * u[1][t,t′]]
+        return [-1im * λ * cos(λ * (ts[t] - ts[t′])) * u[1][t,t′]]
     end
 
     function fd(u, ts, t)
@@ -47,17 +47,11 @@ end
 
     L = GreenFunction(-1im * ones(ComplexF64,1,1), Lesser)
 
-    sol = kbsolve(fv, fd, [L, ], (0.0, 2.0); atol=1e-9, rtol=1e-6);
+    kb = kbsolve(fv, fd, [L, ], (0.0, 200.0); atol=atol, rtol=rtol);
 
-    function sol1(t, l0)
-        return -1.0im * exp(-1.0im * 1/λ * sin(λ * t))
+    function sol(t, t′)
+        return -1.0im * exp(-1.0im * sin(λ * (t - t′)))
     end
 
-    @testset begin
-        for (i, tᵢ) in enumerate(sol.t)
-            for (j, tⱼ) in enumerate(sol.t)
-                @test L[i,j] ≈ sol1(tᵢ-tⱼ, L[1,1]) atol=1e-6 rtol=1e-3
-            end
-        end
-    end
+    @test L.data ≈ [sol(t1, t2) for t1 in kb.t, t2 in kb.t] atol=1e1atol rtol=1e1rtol
 end
