@@ -38,12 +38,15 @@ mutable struct VCABMCache{T,U}
   k::Int
   error_k::T
 
-  function VCABMCache{T}(kmax, u_prev::U, f_prev::U) where {T,U} # k = 1
+  function VCABMCache{T}(kmax, u_prev, f_prev) where {T}
+    u_prev = VectorOfArray(u_prev)
+    f_prev = VectorOfArray(f_prev)
+
     ϕ_n = [zero.(f_prev) for _ in 1:kmax+1]
     ϕstar_nm = [zero.(f_prev) for _ in 1:kmax+1]
     ϕstar_n = [zero.(f_prev) for _ in 1:kmax+1]
     ϕ_np = [zero.(f_prev) for _ in 1:kmax+2]
-    new{T,U}(
+    new{T,typeof(u_prev)}(
       u_prev,zero.(u_prev),zero.(u_prev),f_prev,
       ϕ_n,ϕ_np,ϕstar_n,ϕstar_nm,
       zeros(T,kmax+1,kmax+1),zeros(T,kmax+1),1,T(Inf))
@@ -99,7 +102,7 @@ end
 function correct!(du, cache)
   @unpack u_next,g,ϕ_np1,ϕstar_n,k = cache
   @inbounds begin
-    ϕ_np1!(cache, du, k+1)
+    ϕ_np1!(cache, VectorOfArray(collect(du)), k+1)
     @. u_next = muladd(g[k], ϕ_np1[k], u_next)
   end
   u_next

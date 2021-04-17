@@ -58,43 +58,36 @@ function kbsolve(f_vert, f_diag, u0, (t0, tmax);
   end
   @assert last(t0) < tmax "Only t0 < tmax supported"
 
-  state = let
-    cache = begin
-      t = length(t0)
+  cache = let
+    t = length(t0)
 
-      u0_ = map(t′ -> [x[t,t′] for x in u0], eachindex(t0))
-      u0_ = push!(u0_, [x[t,t] for x in u0])
-
-      f0 = map(t′ -> f_vert(u0,t0,t,t′), eachindex(t0))
-      f0 = push!(f0, f_diag(u0,t0,t))
-
-      VCABMCache{eltype(t0)}(opts.kmax, VectorOfArray(u0_), VectorOfArray(f0))
-    end
-
-    KBState(u0,v0, [t0; last(t0) + opts.dtini], cache)
+    VCABMCache{eltype(t0)}(opts.kmax, 
+      push!(map(t′ -> [x[t,t′] for x in u0], 1:t), [x[t,t] for x in u0]),
+      push!(map(t′ -> f_vert(u0,t0,t,t′), 1:t), f_diag(u0,t0,t)))
   end
-  
-  while timeloop!(state,state.u_cache,tmax,opts)
+  state = KBState(u0, v0, [t0; last(t0) + opts.dtini])
+
+  while timeloop!(state,cache,tmax,opts)
     t = length(state.t)
 
     f(t′) = isequal(t,t′) ? f_diag(state.u, state.t, t) : f_vert(state.u, state.t, t, t′)
 
     # Predictor
-    u_next = predict!(state.t, state.u_cache)
+    u_next = predict!(state.t, cache)
     for t′ in 1:t
       foreach((u,u′) -> u[t,t′] = u′, state.u, u_next[t′])
       update_time(state.t, t, t′)
     end
 
     # Corrector
-    u_next = correct!(VectorOfArray([f(t′) for t′ in 1:t]), state.u_cache)
+    u_next = correct!((f(t′) for t′ in 1:t), cache)
     for t′ in 1:t
       foreach((u,u′) -> u[t,t′] = u′, state.u, u_next[t′])
       update_time(state.t, t, t′)
     end
 
     # Calculate error and, if the step is accepted, adjust order and add a new cache entry
-    adjust_order!(t′ -> f_vert(state.u, state.t, t′, t), (f(t′) for t′ in 1:t), state, state.u_cache, opts.kmax, opts.atol, opts.rtol)
+    adjust_order!(t′ -> f_vert(state.u, state.t, t′, t), (f(t′) for t′ in 1:t), state, cache, opts.kmax, opts.atol, opts.rtol)
   end # timeloop!
   
   return state
@@ -132,14 +125,8 @@ function timeloop!(state,cache,tmax,opts)
 end
 
 # Holds the information about the integration
-mutable struct KBState{T,U,V,F}
+mutable struct KBState{U,V,T}
   u::U
   v::V
   t::Vector{T}
-
-  u_cache::VCABMCache{T,F}
-
-  function KBState(u::U, v::V, t::Vector{T}, cache::VCABMCache{T,F}) where {T,U,V,F}
-    new{T,U,V,F}(u, v, t, cache)
-  end
 end
