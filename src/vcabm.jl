@@ -44,8 +44,8 @@ mutable struct VCABMCache{T,U}
   error_k::T
 
   function VCABMCache{T}(kmax, u_prev, f_prev) where {T}
-    u_prev = VectorOfArray(u_prev)
-    f_prev = VectorOfArray(f_prev)
+    u_prev = VectorOfArray(collect(unzip(u_prev)))
+    f_prev = VectorOfArray(collect(unzip(f_prev)))
 
     ϕ_n = [zero.(f_prev) for _ in 1:kmax+1]
     ϕstar_nm = [zero.(f_prev) for _ in 1:kmax+1]
@@ -63,16 +63,19 @@ function extend_cache!(f_vert, times, cache, kmax)
   t = length(times)
 
   # Insert new terms for `f_vert` at `(t,t)`
-  insert!(f_prev.u, t, f_vert(t))
-  insert!(u_prev.u, t, copy.(u_prev[t]))
-  insert!(u_next.u, t, zero.(u_prev[t]))
-  insert!(u_erro.u, t, zero.(u_erro[t]))
+  f = f_vert(t)
+  for i in eachindex(f)
+    insert!(f_prev.u[i], t, f[i])
+    insert!(u_prev.u[i], t, copy(u_prev.u[i][t]))
+    insert!(u_next.u[i], t, zero(u_prev.u[i][t]))
+    insert!(u_erro.u[i], t, zero(u_erro.u[i][t]))
+  end
 
   # And calculate the ϕs
-  _ϕ_n = [zero.(f_prev[t]) for _ in 1:kmax+1]
-  _ϕ_np1 = [zero.(f_prev[t]) for _ in 1:kmax+2]
-  _ϕstar_n = [zero.(f_prev[t]) for _ in 1:kmax+1]
-  _ϕstar_nm1 = [zero.(f_prev[t]) for _ in 1:kmax+1]
+  _ϕ_n = [zero(f) for _ in 1:kmax+1]
+  _ϕ_np1 = [zero(f) for _ in 1:kmax+2]
+  _ϕstar_n = [zero(f) for _ in 1:kmax+1]
+  _ϕstar_nm1 = [zero(f) for _ in 1:kmax+1]
 
   t0 = max(1, t - k)
   for t′ in (t0+1):t
@@ -84,10 +87,12 @@ function extend_cache!(f_vert, times, cache, kmax)
     _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
   end
 
-  foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕ_n, _ϕ_n)
-  foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕ_np1, _ϕ_np1)
-  foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕstar_n, _ϕstar_n)
-  foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕstar_nm1, _ϕstar_nm1)
+  for i in eachindex(f)
+    foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕ_n, _ϕ_n)
+    foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕ_np1, _ϕ_np1)
+    foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕstar_n, _ϕstar_n)
+    foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕstar_nm1, _ϕstar_nm1)
+  end
 end
 
 # Explicit Adams: Section III.5 Eq. (5.5)
@@ -107,7 +112,7 @@ end
 function correct!(du, cache)
   @unpack u_next,g,ϕ_np1,ϕstar_n,k = cache
   @inbounds begin
-    ϕ_np1!(cache, VectorOfArray(collect(du)), k+1)
+    ϕ_np1!(cache, VectorOfArray(collect(unzip(du))), k+1)
     @. u_next = muladd(g[k], ϕ_np1[k], u_next)
   end
   u_next
@@ -136,7 +141,7 @@ function adjust_order!(f_vert, f, state, cache, kmax, atol, rtol)
       return
     end
 
-    cache.f_prev = VectorOfArray([f...])
+    cache.f_prev = VectorOfArray(collect(unzip(f)))
 
     if length(state.t)<=5 || k<3
       cache.k = min(k+1, 3, kmax)

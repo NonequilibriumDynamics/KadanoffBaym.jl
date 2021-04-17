@@ -66,17 +66,13 @@ function kbsolve(f_vert, f_diag, u0, (t0, tmax);
 
     # Predictor
     u_next = predict!(state.t, cache)
-    for t′ in 1:t
-      foreach((u,u′) -> u[t,t′] = u′, state.u, u_next[t′])
-      update_time(state.t, t, t′)
-    end
+    foreach((u,u′) -> u[t,1:t] = u′, state.u, u_next)
+    foreach(t′ -> update_time(state.t, t, t′), 1:t)
 
     # Corrector
     u_next = correct!((f(t′) for t′ in 1:t), cache)
-    for t′ in 1:t
-      foreach((u,u′) -> u[t,t′] = u′, state.u, u_next[t′])
-      update_time(state.t, t, t′)
-    end
+    foreach((u,u′) -> u[t,1:t] = u′, state.u, u_next)
+    foreach(t′ -> update_time(state.t, t, t′), 1:t)
 
     # Calculate error and, if the step is accepted, adjust order and add a new cache entry
     adjust_order!(t′ -> f_vert(state.u, state.t, t′, t), (f(t′) for t′ in 1:t), state, cache, opts.kmax, opts.atol, opts.rtol)
