@@ -1,8 +1,3 @@
-"""
-  VCABMOptions(...)
-
-Returns a the parameters needed to control a VCABM integrator
-"""
 struct VCABMOptions
   atol::Number
   rtol::Number
@@ -43,15 +38,12 @@ mutable struct VCABMCache{T,U}
   k::Int
   error_k::T
 
-  function VCABMCache{T}(kmax, u_prev, f_prev) where {T}
-    u_prev = VectorOfArray(u_prev)
-    f_prev = VectorOfArray(f_prev)
-
+  function VCABMCache{T}(kmax, u_prev::U, f_prev::U) where {T,U} # k = 1
     ϕ_n = [zero.(f_prev) for _ in 1:kmax+1]
     ϕstar_nm = [zero.(f_prev) for _ in 1:kmax+1]
     ϕstar_n = [zero.(f_prev) for _ in 1:kmax+1]
     ϕ_np = [zero.(f_prev) for _ in 1:kmax+2]
-    new{T,typeof(u_prev)}(
+    new{T,U}(
       u_prev,zero.(u_prev),zero.(u_prev),f_prev,
       ϕ_n,ϕ_np,ϕstar_n,ϕstar_nm,
       zeros(T,kmax+1,kmax+1),zeros(T,kmax+1),1,T(Inf))
@@ -107,7 +99,7 @@ end
 function correct!(du, cache)
   @unpack u_next,g,ϕ_np1,ϕstar_n,k = cache
   @inbounds begin
-    ϕ_np1!(cache, VectorOfArray(collect(du)), k+1)
+    ϕ_np1!(cache, du, k+1)
     @. u_next = muladd(g[k], ϕ_np1[k], u_next)
   end
   u_next
@@ -129,7 +121,7 @@ function adjust_order!(f_vert, f, state, cache, kmax, atol, rtol)
     @unpack u_prev,u_next,g,ϕ_np1,ϕstar_n,k,u_erro = cache
 
     # Calculate error: Section III.7 Eq. (7.3)
-    cache.error_k = norm(g[k+1]-g[k]) * norm(error!(u_erro, ϕ_np1[k+1], u_prev, u_next, atol, rtol))
+    cache.error_k = error_estimate!(u_erro, (g[k+1]-g[k]) * ϕ_np1[k+1], u_prev, u_next, atol, rtol) |> norm
     
     # Fail step: Section III.7 Eq. (7.4)
     if cache.error_k > one(cache.error_k)
@@ -141,13 +133,13 @@ function adjust_order!(f_vert, f, state, cache, kmax, atol, rtol)
     if length(state.t)<=5 || k<3
       cache.k = min(k+1, 3, kmax)
     else
-      error_k1 = norm(g[k]-g[k-1]) * norm(error!(u_erro, ϕ_np1[k], u_prev, u_next, atol, rtol))
-      error_k2 = norm(g[k-1]-g[k-2]) * norm(error!(u_erro, ϕ_np1[k-1], u_prev, u_next, atol, rtol))
+      error_k1 = error_estimate!(u_erro, (g[k]-g[k-1]) * ϕ_np1[k], u_prev, u_next, atol, rtol) |> norm
+      error_k2 = error_estimate!(u_erro, (g[k-1]-g[k-2]) * ϕ_np1[k-1], u_prev, u_next, atol, rtol) |> norm
       if max(error_k2, error_k1) <= cache.error_k
         cache.k = k-1
       else
         ϕ_np1!(cache, cache.f_prev, k+2)
-        error_kstar = norm((state.t[end] - state.t[end-1]) * γstar[k+2]) * norm(error!(u_erro, ϕ_np1[k+2], u_prev, u_next, atol, rtol))
+        error_kstar = error_estimate!(u_erro, (state.t[end] - state.t[end-1]) * γstar[k+2] * ϕ_np1[k+2], u_prev, u_next, atol, rtol) |> norm
         if error_kstar < cache.error_k
           cache.k = min(k+1, kmax)
           cache.error_k = one(cache.error_k)   # constant dt
@@ -201,11 +193,11 @@ end
 const γstar = [1,-1/2,-1/12,-1/24,-19/720,-3/160,-863/60480,-275/24192,-33953/3628800,-0.00789255,-0.00678585,-0.00592406,-0.00523669,-0.0046775,-0.00421495,-0.0038269]
 
 # Error estimation and norm: Section II.4 Eq. (4.11)
-@inline function error!(out::AbstractArray,ũ::AbstractArray, u₀::AbstractArray, u₁::AbstractArray, atol::Real, rtol::Real)
-  @. out = error!(out, ũ, u₀, u₁, atol, rtol)
+@inline function error_estimate!(out::AbstractArray,ũ::AbstractArray, u₀::AbstractArray, u₁::AbstractArray, atol::Real, rtol::Real)
+  @. out = error_estimate!(out, ũ, u₀, u₁, atol, rtol)
   out
 end
-@inline function error!(out::AbstractArray{<:Number},ũ::AbstractArray{<:Number}, u₀::AbstractArray{<:Number}, u₁::AbstractArray{<:Number}, atol::Real, rtol::Real)
+@inline function error_estimate!(out::AbstractArray{<:Number},ũ::AbstractArray{<:Number}, u₀::AbstractArray{<:Number}, u₁::AbstractArray{<:Number}, atol::Real, rtol::Real)
   @. out = error_estimate(ũ, u₀, u₁, atol, rtol)
   out
 end

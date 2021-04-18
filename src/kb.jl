@@ -1,40 +1,48 @@
 """
-  kbsolve(f_vert, f_diag, u0, (t0, tmax); ...)
+  Kadanoff-Baym adaptive timestepper
 
 Solves the 2-time (Voltera integral) differential equations
+  du/dt1 = F[u](t1,t2)
+  du/dt2 = G[u](t1,t2)
 
-  du/dt1 = f(u,t1,t2)
+The signature of `f_vert` and `f_diag` must be of the form
+  f_vert(u, t_grid, t1, t2)
+  f_diag(u, t_grid, t1)
+And if 1-time functions `v` are present
+  f_vert(u, v, t_grid, t1, t2)
+  f_diag(u, v, t_grid, t1)
+  f_line(u, v, t_grid, t1)
 
-  du/dt2 = g(u,t1,t2)
+## Parameters
+  - `RHS` of the differential equation du/dt1 (`f_vert`)
+  - `RHS` of the differential equation (d/dt1 + d/dt2)u (`f_diag`)
+  - Initial value for the 2-point functions (`u0`)
 
-for some initial condition `u0` from `t0` to `tmax`.
-# Parameters
-  - `f_vert(u, ts, t1, t2)` of the differential equation `du/dt1`
-  - `f_diag(u, ts, t1)` of the differential equation `d/dt1 + d/dt2`
-  - `u0::Vector{<:GreenFunction}`: initial condition for the 2-point functions
-  - `(t0, tmax)`: the initial and final time
+## Optional keyword parameters
+  - For repeated operations, the user can call
 
-# Optional keyword parameters
-  - `update_time(ts, t1, t2)`: A function that gets called everytime the 2-point function values are updated by the stepper
+  If 1-time functions are present:
+  - Initial value for the 1-point functions (`l0`)
+  - 
+  - 
 
-  - `f_line(u, ts, t1)`:
-  - `l0`: initial condition for the 1-point functions
-  - `update_line(ts, t1)`:
+  If higher precision Volterra integrals are needed
+  - Initial value for the 2-time volterra integrals (`v0`)
+  - The kernel of the `RHS` of du/dt1 (`kernel_vert`)
+  - The kernel of the `RHS` of (d/dt1 + d/dt2)u (`kenerl_diag`)
 
-  - `kernel_vert`: the integral kernel of `du/dt1`
-  - `kernel_diag`: the integral kernel of `d/dt1 + d/dt2`
-  - `v0`: initial condition for the 2-time volterra integrals
-  
-  - `kwargs...`: see `VCABMOptions`
-
-# Notes
+## Notes
+  - It is required that both `u`s and can `v`s can be **indexed** by 2-time 
+    and 1-time arguments, respectively, and can be `resize!`d at will
+    uᵢⱼ = resize!(u, new_size)
+    vᵢ = resize!(v, new_size)
   - Unlike standard ODE solvers, `kbsolve` is designed to mutate the initial 
-    conditions
+    condition `u`
   - The Kadanoff-Baym timestepper is a 2-time generalization of the VCABM stepper 
     presented in Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
     Solving Ordinary Differential Equations I: Nonstiff Problems
 """
-function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
+function kbsolve(f_vert, f_diag, u0, (t0, tmax);
   update_time=(x...)->nothing,
   l0=nothing, f_line=nothing, update_line=(x...)->nothing,
   v0=nothing, kernel_vert=nothing, kernel_diag=nothing,
@@ -50,33 +58,43 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
   end
   @assert last(t0) < tmax "Only t0 < tmax supported"
 
-  cache = let
-    t = length(t0)
+  state = let
+    cache = begin
+      t = length(t0)
 
-    VCABMCache{eltype(t0)}(opts.kmax, 
-      push!(map(t′ -> [x[t,t′] for x in u0], 1:t), [x[t,t] for x in u0]),
-      push!(map(t′ -> f_vert(u0,t0,t,t′), 1:t), f_diag(u0,t0,t)))
+      u0_ = map(t′ -> [x[t,t′] for x in u0], eachindex(t0))
+      u0_ = push!(u0_, [x[t,t] for x in u0])
+
+      f0 = map(t′ -> f_vert(u0,t0,t,t′), eachindex(t0))
+      f0 = push!(f0, f_diag(u0,t0,t))
+
+      VCABMCache{eltype(t0)}(opts.kmax, VectorOfArray(u0_), VectorOfArray(f0))
+    end
+
+    KBState(u0,v0, [t0; last(t0) + opts.dtini], cache)
   end
-  state = KBState(u0, v0, [t0; last(t0) + opts.dtini])
-
-  # All mutations of user arguments are done explicitely here in kb.jl
-  while timeloop!(state,cache,tmax,opts)
+  
+  while timeloop!(state,state.u_cache,tmax,opts)
     t = length(state.t)
 
-    f() = (t′<t ? f_vert(state.u,state.t,t,t′) : f_diag(state.u,state.t,t) for t′=1:t)
+    f(t′) = isequal(t,t′) ? f_diag(state.u, state.t, t) : f_vert(state.u, state.t, t, t′)
 
     # Predictor
-    u_next = predict!(state.t, cache)
-    foreach(i -> state.u[i][t,1:t] .= u_next[i,:], eachindex(state.u))
-    foreach(t′ -> update_time(state.t, t, t′), 1:t)
+    u_next = predict!(state.t, state.u_cache)
+    for t′ in 1:t
+      foreach((u,u′) -> u[t,t′] = u′, state.u, u_next[t′])
+      update_time(state.t, t, t′)
+    end
 
     # Corrector
-    u_next = correct!(f(), cache)
-    foreach(i -> state.u[i][t,1:t] .= u_next[i,:], eachindex(state.u))
-    foreach(t′ -> update_time(state.t, t, t′), 1:t)
+    u_next = correct!(VectorOfArray([f(t′) for t′ in 1:t]), state.u_cache)
+    for t′ in 1:t
+      foreach((u,u′) -> u[t,t′] = u′, state.u, u_next[t′])
+      update_time(state.t, t, t′)
+    end
 
     # Calculate error and, if the step is accepted, adjust order and add a new cache entry
-    adjust_order!(t′ -> f_vert(state.u,state.t,t′,t), f(), state, cache, opts.kmax, opts.atol, opts.rtol)
+    adjust_order!(t′ -> f_vert(state.u, state.t, t′, t), (f(t′) for t′ in 1:t), state, state.u_cache, opts.kmax, opts.atol, opts.rtol)
   end # timeloop!
   
   return state
@@ -114,8 +132,14 @@ function timeloop!(state,cache,tmax,opts)
 end
 
 # Holds the information about the integration
-mutable struct KBState{U,V,T}
+mutable struct KBState{T,U,V,F}
   u::U
   v::V
   t::Vector{T}
+
+  u_cache::VCABMCache{T,F}
+
+  function KBState(u::U, v::V, t::Vector{T}, cache::VCABMCache{T,F}) where {T,U,V,F}
+    new{T,U,V,F}(u, v, t, cache)
+  end
 end

@@ -1,2 +1,2 @@
 # KadanoffBaym.jl
-A time propagation algorithm for the Kadanoff-Baym equations
+A DifferentialEquations.jl time propagation algorithm for the Kadanoff-Baym equations

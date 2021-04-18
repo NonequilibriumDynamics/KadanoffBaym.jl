@@ -1,7 +1,8 @@
 module KadanoffBaym
 
-using EllipsisNotation
+using LinearAlgebra
 using UnPack
+using EllipsisNotation
 using Requires
 using RecursiveArrayTools
 
@@ -14,11 +15,13 @@ include("vcabm.jl")
 include("volterra.jl")
 include("kb.jl")
 
-@init @require FFTW="7a1cc6ca-52ef-59f5-83cd-3a7055c09341" begin
-  @require Interpolations="a98d9a8b-a2ab-59e6-89dd-64a1c18fca59" begin
-    using .FFTW, .Interpolations
+function __init__()
+  @require FFTW="7a1cc6ca-52ef-59f5-83cd-3a7055c09341" begin
+    @require Interpolations="a98d9a8b-a2ab-59e6-89dd-64a1c18fca59" begin
+      using .FFTW, .Interpolations
       include("wigner.jl")
       export wigner_transform, wigner_transform_itp
+    end
   end
 end
 
