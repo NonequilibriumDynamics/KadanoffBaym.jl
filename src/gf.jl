@@ -95,7 +95,7 @@ Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,<:Union{
 end
 
 for g in (:GreenFunction, )
-  for f in (:-, :conj, :real, :imag, :adjoint, :transpose, :inv, :zero)
+  for f in (:-, :conj, :real, :imag, :adjoint, :transpose, :zero)
     @eval (Base.$f)(G::$g{T,N,A,U}) where {T,N,A,U} = $g(Base.$f(G.data), U)
   end
 
