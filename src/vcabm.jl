@@ -1,3 +1,8 @@
+"""
+  VCABMOptions(...)
+
+Returns a the parameters needed to control a VCABM integrator
+"""
 struct VCABMOptions
   atol::Number
   rtol::Number

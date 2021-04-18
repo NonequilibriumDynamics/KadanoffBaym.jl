@@ -1,43 +1,35 @@
 """
-  Kadanoff-Baym adaptive timestepper
+  kbsolve(f_vert, f_diag, u0, (t0, tmax); ...)
 
 Solves the 2-time (Voltera integral) differential equations
-  du/dt1 = F[u](t1,t2)
-  du/dt2 = G[u](t1,t2)
 
-The signature of `f_vert` and `f_diag` must be of the form
-  f_vert(u, t_grid, t1, t2)
-  f_diag(u, t_grid, t1)
-And if 1-time functions `v` are present
-  f_vert(u, v, t_grid, t1, t2)
-  f_diag(u, v, t_grid, t1)
-  f_line(u, v, t_grid, t1)
+  du/dt1 = f(u,t1,t2)
 
-## Parameters
-  - `RHS` of the differential equation du/dt1 (`f_vert`)
-  - `RHS` of the differential equation (d/dt1 + d/dt2)u (`f_diag`)
-  - Initial value for the 2-point functions (`u0`)
+  du/dt2 = g(u,t1,t2)
 
-## Optional keyword parameters
-  - For repeated operations, the user can call
+for some initial condition `u0` from `t0` to `tmax`.
+# Parameters
+  - `f_vert(u, ts, t1, t2)` of the differential equation `du/dt1`
+  - `f_diag(u, ts, t1)` of the differential equation `d/dt1 + d/dt2`
+  - `u0::Vector{<:GreenFunction}`: initial condition for the 2-point functions
+  - `(t0, tmax)`: the initial and final time
 
-  If 1-time functions are present:
-  - Initial value for the 1-point functions (`l0`)
-  - 
-  - 
+# Optional keyword parameters
+  - `update_time(ts, t1, t2)`: A function that gets called everytime the 2-point function values are updated by the stepper
 
-  If higher precision Volterra integrals are needed
-  - Initial value for the 2-time volterra integrals (`v0`)
-  - The kernel of the `RHS` of du/dt1 (`kernel_vert`)
-  - The kernel of the `RHS` of (d/dt1 + d/dt2)u (`kenerl_diag`)
+  - `f_line(u, ts, t1)`:
+  - `l0`: initial condition for the 1-point functions
+  - `update_line(ts, t1)`:
 
-## Notes
-  - It is required that both `u`s and can `v`s can be **indexed** by 2-time 
-    and 1-time arguments, respectively, and can be `resize!`d at will
-    uᵢⱼ = resize!(u, new_size)
-    vᵢ = resize!(v, new_size)
+  - `kernel_vert`: the integral kernel of `du/dt1`
+  - `kernel_diag`: the integral kernel of `d/dt1 + d/dt2`
+  - `v0`: initial condition for the 2-time volterra integrals
+  
+  - `kwargs...`: see `VCABMOptions`
+
+# Notes
   - Unlike standard ODE solvers, `kbsolve` is designed to mutate the initial 
-    condition `u`
+    conditions
   - The Kadanoff-Baym timestepper is a 2-time generalization of the VCABM stepper 
     presented in Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
     Solving Ordinary Differential Equations I: Nonstiff Problems
