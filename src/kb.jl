@@ -35,7 +35,7 @@ for some initial condition `u0` from `t0` to `tmax`.
     Solving Ordinary Differential Equations I: Nonstiff Problems
 """
 function kbsolve(f_vert, f_diag, u0, (t0, tmax);
-  update_time=(x...)->nothing,
+  update_time! =(x...)->nothing,
   l0=nothing, f_line=nothing, update_line=(x...)->nothing,
   v0=nothing, kernel_vert=nothing, kernel_diag=nothing,
   kwargs...)
@@ -65,14 +65,12 @@ function kbsolve(f_vert, f_diag, u0, (t0, tmax);
     f(t′) = isequal(t,t′) ? f_diag(state.u, state.t, t) : f_vert(state.u, state.t, t, t′)
 
     # Predictor
-    u_next = predict!(state.t, cache)
-    foreach((u,u′) -> u[t,1:t] = u′, state.u, u_next)
-    foreach(t′ -> update_time(state.t, t, t′), 1:t)
+    predict!(state, cache)
+    foreach(t′ -> update_time!(state.t, t, t′), 1:t)
 
     # Corrector
-    u_next = correct!((f(t′) for t′ in 1:t), cache)
-    foreach((u,u′) -> u[t,1:t] = u′, state.u, u_next)
-    foreach(t′ -> update_time(state.t, t, t′), 1:t)
+    correct!(state, cache, (f(t′) for t′ in 1:t))
+    foreach(t′ -> update_time!(state.t, t, t′), 1:t)
 
     # Calculate error and, if the step is accepted, adjust order and add a new cache entry
     adjust_order!(t′ -> f_vert(state.u, state.t, t′, t), (f(t′) for t′ in 1:t), state, cache, opts.kmax, opts.atol, opts.rtol)

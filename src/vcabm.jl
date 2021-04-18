@@ -66,8 +66,6 @@ function extend_cache!(f_vert, times, cache, kmax)
   f = f_vert(t)
   for i in eachindex(f)
     insert!(f_prev.u[i], t, f[i])
-    insert!(u_prev.u[i], t, copy(u_prev.u[i][t]))
-    insert!(u_next.u[i], t, zero(u_prev.u[i][t]))
     insert!(u_erro.u[i], t, zero(u_erro.u[i][t]))
   end
 
@@ -96,26 +94,31 @@ function extend_cache!(f_vert, times, cache, kmax)
 end
 
 # Explicit Adams: Section III.5 Eq. (5.5)
-function predict!(times, cache)
+function predict!(state, cache)
   @inbounds begin
-    @unpack u_prev,u_next,g,ϕstar_n,k = cache
-    ϕ_and_ϕstar!(times, cache, k+1)
-    @. u_next = muladd(g[1], ϕstar_n[1], u_prev)
-    for i = 2:k-1 # NOTE: Check this (-1)
-      @. u_next = muladd(g[i], ϕstar_n[i], u_next)
+    @unpack g,ϕstar_n,k = cache
+    ϕ_and_ϕstar!(state.t, cache, k+1)
+
+    t = length(state.t)
+    for j in eachindex(state.u)
+      @. state.u[j][t,1:(t-1)] = state.u[j][(t-1),1:(t-1)]
+      state.u[j][t,t] = state.u[j][t-1,t-1]
+      @. state.u[j][t,1:t] += g[1] * ϕstar_n[1][j]
+      for i = 2:k-1
+        @. state.u[j][t,1:t] += g[i] * ϕstar_n[i][j]
+      end
     end
   end
-  u_next
 end
 
 # Implicit Adams: Section III.5 Eq (5.7)
-function correct!(du, cache)
-  @unpack u_next,g,ϕ_np1,ϕstar_n,k = cache
+function correct!(state, cache, du)
+  @unpack g,ϕ_np1,ϕstar_n,k = cache
   @inbounds begin
     ϕ_np1!(cache, VectorOfArray(collect(unzip(du))), k+1)
-    @. u_next = muladd(g[k], ϕ_np1[k], u_next)
+    t = length(state.t)
+    foreach((u, ϕ) -> u[t, 1:t] .+= g[k] * ϕ, state.u, ϕ_np1[k])
   end
-  u_next
 end
 
 function ϕ_np1!(cache, du, k)
@@ -131,7 +134,11 @@ end
 # Control order: Section III.7 Eq. (7.7)
 function adjust_order!(f_vert, f, state, cache, kmax, atol, rtol)
   @inbounds begin
-    @unpack u_prev,u_next,g,ϕ_np1,ϕstar_n,k,u_erro = cache
+    @unpack g,ϕ_np1,ϕstar_n,k,u_erro = cache
+
+    t = length(state.t)
+    u_next = [u[t,1:t] for u in state.u] |> VectorOfArray
+    u_prev = push!.([u[t-1,1:(t-1)] for u in state.u], [u[t-1,t-1] for u in state.u]) |> VectorOfArray
 
     # Calculate error: Section III.7 Eq. (7.3)
     cache.error_k = norm(g[k+1]-g[k]) * norm(error!(u_erro, ϕ_np1[k+1], u_prev, u_next, atol, rtol))
@@ -159,7 +166,6 @@ function adjust_order!(f_vert, f, state, cache, kmax, atol, rtol)
         end
       end
     end
-    @. cache.u_prev = cache.u_next
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
 
     # Add vertical cache at u[t,t]. NOTE: investigate performance before evaluating `f_prev`
