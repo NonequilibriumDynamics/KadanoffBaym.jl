@@ -44,8 +44,8 @@ mutable struct VCABMCache{T,U}
   error_k::T
 
   function VCABMCache{T}(kmax, u_prev, f_prev) where {T}
-    u_prev = VectorOfArray(collect(unzip(u_prev)))
-    f_prev = VectorOfArray(collect(unzip(f_prev)))
+    u_prev = VectorOfArray(u_prev)
+    f_prev = VectorOfArray(f_prev)
 
     ϕ_n = [zero.(f_prev) for _ in 1:kmax+1]
     ϕstar_nm = [zero.(f_prev) for _ in 1:kmax+1]
@@ -63,17 +63,16 @@ function extend_cache!(f_vert, times, cache, kmax)
   t = length(times)
 
   # Insert new terms for `f_vert` at `(t,t)`
-  f = f_vert(t)
-  for i in eachindex(f)
-    insert!(f_prev.u[i], t, f[i])
-    insert!(u_erro.u[i], t, zero(u_erro.u[i][t]))
-  end
+  insert!(f_prev.u, t, f_vert(t))
+  insert!(u_prev.u, t, copy.(u_prev[t]))
+  insert!(u_next.u, t, zero.(u_prev[t]))
+  insert!(u_erro.u, t, zero.(u_erro[t]))
 
   # And calculate the ϕs
-  _ϕ_n = [zero(f) for _ in 1:kmax+1]
-  _ϕ_np1 = [zero(f) for _ in 1:kmax+2]
-  _ϕstar_n = [zero(f) for _ in 1:kmax+1]
-  _ϕstar_nm1 = [zero(f) for _ in 1:kmax+1]
+  _ϕ_n = [zero.(f_prev[t]) for _ in 1:kmax+1]
+  _ϕ_np1 = [zero.(f_prev[t]) for _ in 1:kmax+2]
+  _ϕstar_n = [zero.(f_prev[t]) for _ in 1:kmax+1]
+  _ϕstar_nm1 = [zero.(f_prev[t]) for _ in 1:kmax+1]
 
   t0 = max(1, t - k)
   for t′ in (t0+1):t
@@ -85,40 +84,33 @@ function extend_cache!(f_vert, times, cache, kmax)
     _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
   end
 
-  for i in eachindex(f)
-    foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕ_n, _ϕ_n)
-    foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕ_np1, _ϕ_np1)
-    foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕstar_n, _ϕstar_n)
-    foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕstar_nm1, _ϕstar_nm1)
-  end
+  foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕ_n, _ϕ_n)
+  foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕ_np1, _ϕ_np1)
+  foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕstar_n, _ϕstar_n)
+  foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕstar_nm1, _ϕstar_nm1)
 end
 
 # Explicit Adams: Section III.5 Eq. (5.5)
-function predict!(state, cache)
+function predict!(times, cache)
   @inbounds begin
-    @unpack g,ϕstar_n,k = cache
-    ϕ_and_ϕstar!(state.t, cache, k+1)
-
-    t = length(state.t)
-    for j in eachindex(state.u)
-      @. state.u[j][t,1:(t-1)] = state.u[j][(t-1),1:(t-1)]
-      state.u[j][t,t] = state.u[j][t-1,t-1]
-      @. state.u[j][t,1:t] += g[1] * ϕstar_n[1][j]
-      for i = 2:k-1
-        @. state.u[j][t,1:t] += g[i] * ϕstar_n[i][j]
-      end
+    @unpack u_prev,u_next,g,ϕstar_n,k = cache
+    ϕ_and_ϕstar!(times, cache, k+1)
+    @. u_next = muladd(g[1], ϕstar_n[1], u_prev)
+    for i = 2:k-1 # NOTE: Check this (-1)
+      @. u_next = muladd(g[i], ϕstar_n[i], u_next)
     end
   end
+  u_next
 end
 
 # Implicit Adams: Section III.5 Eq (5.7)
-function correct!(state, cache, du)
-  @unpack g,ϕ_np1,ϕstar_n,k = cache
+function correct!(du, cache)
+  @unpack u_next,g,ϕ_np1,ϕstar_n,k = cache
   @inbounds begin
-    ϕ_np1!(cache, VectorOfArray(collect(unzip(du))), k+1)
-    t = length(state.t)
-    foreach((u, ϕ) -> u[t, 1:t] .+= g[k] * ϕ, state.u, ϕ_np1[k])
+    ϕ_np1!(cache, VectorOfArray(collect(du)), k+1)
+    @. u_next = muladd(g[k], ϕ_np1[k], u_next)
   end
+  u_next
 end
 
 function ϕ_np1!(cache, du, k)
@@ -134,11 +126,7 @@ end
 # Control order: Section III.7 Eq. (7.7)
 function adjust_order!(f_vert, f, state, cache, kmax, atol, rtol)
   @inbounds begin
-    @unpack g,ϕ_np1,ϕstar_n,k,u_erro = cache
-
-    t = length(state.t)
-    u_next = [u[t,1:t] for u in state.u] |> VectorOfArray
-    u_prev = push!.([u[t-1,1:(t-1)] for u in state.u], [u[t-1,t-1] for u in state.u]) |> VectorOfArray
+    @unpack u_prev,u_next,g,ϕ_np1,ϕstar_n,k,u_erro = cache
 
     # Calculate error: Section III.7 Eq. (7.3)
     cache.error_k = norm(g[k+1]-g[k]) * norm(error!(u_erro, ϕ_np1[k+1], u_prev, u_next, atol, rtol))
@@ -148,7 +136,7 @@ function adjust_order!(f_vert, f, state, cache, kmax, atol, rtol)
       return
     end
 
-    cache.f_prev = VectorOfArray(collect(unzip(f)))
+    cache.f_prev = VectorOfArray([f...])
 
     if length(state.t)<=5 || k<3
       cache.k = min(k+1, 3, kmax)
@@ -166,6 +154,7 @@ function adjust_order!(f_vert, f, state, cache, kmax, atol, rtol)
         end
       end
     end
+    @. cache.u_prev = cache.u_next
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
 
     # Add vertical cache at u[t,t]. NOTE: investigate performance before evaluating `f_prev`

@@ -34,8 +34,8 @@ for some initial condition `u0` from `t0` to `tmax`.
     presented in Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
     Solving Ordinary Differential Equations I: Nonstiff Problems
 """
-function kbsolve(f_vert, f_diag, u0, (t0, tmax);
-  update_time! =(x...)->nothing,
+function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
+  update_time=(x...)->nothing,
   l0=nothing, f_line=nothing, update_line=(x...)->nothing,
   v0=nothing, kernel_vert=nothing, kernel_diag=nothing,
   kwargs...)
@@ -59,21 +59,24 @@ function kbsolve(f_vert, f_diag, u0, (t0, tmax);
   end
   state = KBState(u0, v0, [t0; last(t0) + opts.dtini])
 
+  # All mutations of user arguments are done explicitely here in kb.jl
   while timeloop!(state,cache,tmax,opts)
     t = length(state.t)
 
-    f(t′) = isequal(t,t′) ? f_diag(state.u, state.t, t) : f_vert(state.u, state.t, t, t′)
+    f() = (t′<t ? f_vert(state.u,state.t,t,t′) : f_diag(state.u,state.t,t) for t′=1:t)
 
     # Predictor
-    predict!(state, cache)
-    foreach(t′ -> update_time!(state.t, t, t′), 1:t)
+    u_next = predict!(state.t, cache)
+    foreach(i -> state.u[i][t,1:t] .= u_next[i,:], eachindex(state.u))
+    foreach(t′ -> update_time(state.t, t, t′), 1:t)
 
     # Corrector
-    correct!(state, cache, (f(t′) for t′ in 1:t))
-    foreach(t′ -> update_time!(state.t, t, t′), 1:t)
+    u_next = correct!(f(), cache)
+    foreach(i -> state.u[i][t,1:t] .= u_next[i,:], eachindex(state.u))
+    foreach(t′ -> update_time(state.t, t, t′), 1:t)
 
     # Calculate error and, if the step is accepted, adjust order and add a new cache entry
-    adjust_order!(t′ -> f_vert(state.u, state.t, t′, t), (f(t′) for t′ in 1:t), state, cache, opts.kmax, opts.atol, opts.rtol)
+    adjust_order!(t′ -> f_vert(state.u,state.t,t′,t), f(), state, cache, opts.kmax, opts.atol, opts.rtol)
   end # timeloop!
   
   return state
