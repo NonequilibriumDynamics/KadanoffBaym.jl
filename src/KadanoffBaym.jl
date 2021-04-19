@@ -1,5 +1,6 @@
 module KadanoffBaym
 
+using LinearAlgebra
 using EllipsisNotation
 using UnPack
 using Requires

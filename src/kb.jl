@@ -59,38 +59,42 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
   end
   state = KBState(u0, v0, [t0; last(t0) + opts.dtini])
 
-  # All mutations of user arguments are done explicitely here in kb.jl
+  # All mutations to user arguments are done explicitely here
   while timeloop!(state,cache,tmax,opts)
     t = length(state.t)
 
-    f() = (t′<t ? f_vert(state.u,state.t,t,t′) : f_diag(state.u,state.t,t) for t′=1:t)
+    # Resize solution
+    if t > (last ∘ size ∘ first)(state.u)
+      foreach(u -> resize!(u, t + min(50, ceil(Int, (tmax - state.t[end]) / (state.t[end] - state.t[end-1])))), state.u)
+    end
+
+    f() = (t′<t ? f_vert(state.u,state.t,t,t′) : f_diag(state.u,state.t,t) for t′ in 1:t)
 
     # Predictor
     u_next = predict!(state.t, cache)
-    foreach(i -> state.u[i][t,1:t] .= u_next[i,:], eachindex(state.u))
+    foreach((u, u′) -> u[t,1:t] .= u′, state.u, eachrow(u_next))
     foreach(t′ -> update_time(state.t, t, t′), 1:t)
 
     # Corrector
     u_next = correct!(f(), cache)
-    foreach(i -> state.u[i][t,1:t] .= u_next[i,:], eachindex(state.u))
+    foreach((u, u′) -> u[t,1:t] .= u′, state.u, eachrow(u_next))
     foreach(t′ -> update_time(state.t, t, t′), 1:t)
 
     # Calculate error and, if the step is accepted, adjust order and add a new cache entry
     adjust_order!(t′ -> f_vert(state.u,state.t,t′,t), f(), state, cache, opts.kmax, opts.atol, opts.rtol)
   end # timeloop!
   
+  foreach(u -> resize!(u, length(state.t)), state.u) # trim solution
   return state
 end
 
 function timeloop!(state,cache,tmax,opts)
-  @unpack k, error_k = cache
-
   # II.4 Automatic Step Size Control, Eq. (4.13)
-  q = max(inv(opts.qmax), min(inv(opts.qmin), error_k^(1/(k+1)) / opts.γ))
+  q = max(inv(opts.qmax), min(inv(opts.qmin), cache.error_k^(1/(cache.k+1)) / opts.γ))
   dt = min((state.t[end] - state.t[end-1]) / q, opts.dtmax)
 
   # Remove t_prev if last step failed
-  if error_k > one(error_k)
+  if cache.error_k > one(cache.error_k)
     pop!(state.t) 
   end
 
@@ -101,16 +105,11 @@ function timeloop!(state,cache,tmax,opts)
 
   # Reached the end of the integration
   if iszero(dt) || opts.stop()
-    foreach(u -> resize!(u, length(state.t)), state.u) # trim solution
     return false
+  else
+    push!(state.t, last(state.t) + dt)
+    return true
   end
-
-  # Resize solution if necessary
-  if (t = length(state.t)) == last(size(first(state.u)))
-    foreach(u -> resize!(u, t + min(50, ceil(Int, (tmax - state.t[end]) / dt))), state.u)
-  end
-
-  return (push!(state.t, last(state.t) + dt); true)
 end
 
 # Holds the information about the integration
