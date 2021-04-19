@@ -68,7 +68,7 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
       foreach(u -> resize!(u, t + min(50, ceil(Int, (tmax - state.t[end]) / (state.t[end] - state.t[end-1])))), state.u)
     end
 
-    f() = (t′<t ? f_vert(state.u,state.t,t,t′) : f_diag(state.u,state.t,t) for t′ in 1:t)
+    f() = Iterators.flatten(((f_vert(state.u,state.t,t,t′) for t′ in 1:t-1), (f_diag(state.u,state.t,t),)))
 
     # Predictor
     u_next = predict!(state.t, cache)
