@@ -54,8 +54,8 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
     t = length(t0)
 
     VCABMCache{eltype(t0)}(opts.kmax, 
-      push!(map(t′ -> [x[t,t′] for x in u0], 1:t), [x[t,t] for x in u0]),
-      push!(map(t′ -> f_vert(u0,t0,t,t′), 1:t), f_diag(u0,t0,t)))
+      vcat([[x[t,t′] for x in u0] for t′ in 1:t], [[x[t,t] for x in u0], ]),
+      vcat([f_vert(u0,t0,t,t′) for t′ in 1:t], [f_diag(u0,t0,t), ]))
   end
   state = KBState(u0, v0, [t0; last(t0) + opts.dtini])
 
