@@ -72,12 +72,12 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
 
     # Predictor
     u_next = predict!(state.t, cache)
-    foreach((u, u′) -> u[t,1:t] .= u′, state.u, eachrow(u_next))
+    foreach((u, u′) -> foreach(t′ -> u[t,t′] = u′[t′], 1:t), state.u, eachrow(u_next))
     foreach(t′ -> update_time(state.t, t, t′), 1:t)
 
     # Corrector
     u_next = correct!(f(), cache)
-    foreach((u, u′) -> u[t,1:t] .= u′, state.u, eachrow(u_next))
+    foreach((u, u′) -> foreach(t′ -> u[t,t′] = u′[t′], 1:t), state.u, eachrow(u_next))
     foreach(t′ -> update_time(state.t, t, t′), 1:t)
 
     # Calculate error and, if the step is accepted, adjust order and add a new cache entry
