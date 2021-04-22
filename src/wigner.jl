@@ -1,23 +1,30 @@
 """
-    Wigner-Ville transformation
+    wigner_transform(x::AbstractMatrix; ts=1:size(x,1), fourier=true)
 
-  W_x(ω, T) = i ∫dt x(T + t/2, T - t/2) e^{+i ω t}
+Wigner-Ville transformation
 
-The motivation for the Wigner function is that it reduces to the spectral 
-density function at all times `T` for stationary processes, yet it is fully 
-equivalent to the non-stationary autocorrelation function. Therefore, the 
-Wigner function tells us (roughly) how the spectral density changes in time.
+    W_x(ω, T) = i ∫dt x(T + t/2, T - t/2) e^{+i ω t}
 
-## Parameters
-  - 2-point correlator (`x`)
-  - Time-grid (`ts`): Defaults to a `UnitRange` time-grid
-  - Fourier opt (`fourier`): Whether to Fourier transform. Defaults to `true`
+or
 
-## Returns
-  - The transform (`x`) with the corresponding axes (`ω, t`) or (`t`, `t`)
+    W_x(τ, T) = x(T + t/2, T - t/2)
+
+of a 2-point function `x`. Returns a tuple of `W_x` and the corresponding
+axes (`ω, T`) or (`τ`, `T`), depending on the `fourier` keyword.
+
+The motivation for the Wigner transformation is that, given an autocorrelation
+function `x`, it reduces to the spectral density function at all times `T` for 
+stationary processes, yet it is fully equivalent to the non-stationary 
+autocorrelation function. Therefore, the Wigner (distribution) function tells 
+us, roughly, how the spectral density changes in time.
+
+### Keyword Arguments:
+  - `ts::AbstractVector`: Time grid for `x`. Defaults to a `UnitRange`
+  - `fourier::Bool`: Whether to Fourier transform. Defaults to `true`
 
 ## References:
 https://en.wikipedia.org/wiki/Wigner_distribution_function
+
 http://tftb.nongnu.org
 """
 function wigner_transform(x::AbstractMatrix; ts=1:size(x,1), fourier=true)
