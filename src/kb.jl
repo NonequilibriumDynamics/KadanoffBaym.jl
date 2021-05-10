@@ -3,27 +3,25 @@
 
 Solves the 2-time (Voltera integral) differential equations
 
-  du/dt1 = f(u,t1,t2)
+  du/dt1 = f(u,t1,t2) + ∫dτ K[t1,t2,τ,u]
 
-  du/dt2 = g(u,t1,t2)
+  du/dt2 = f'(u,t1,t2) + ∫dτ K'[t1,t2,τ,u]
 
 for some initial condition `u0` from `t0` to `tmax`.
 # Parameters
   - `f_vert(u, ts, t1, t2)` of the differential equation `du/dt1`
-  - `f_diag(u, ts, t1)` of the differential equation `d/dt1 + d/dt2`
+  - `f_diag(u, ts, t1)` of the differential equation `du/dt1 + du/dt2` at t1=t2
   - `u0::Vector{<:GreenFunction}`: initial condition for the 2-point functions
   - `(t0, tmax)`: the initial and final time
 
 # Optional keyword parameters
-  - `update_time(ts, t1, t2)`: A function that gets called everytime the 2-point function values are updated by the stepper
+  - `callback(ts, t1)`: A function that gets called everytime the 2-point function values at slice `(t1, 1:t1)` are updated by the stepper
 
-  - `f_line(u, ts, t1)`:
+  - `f_line(u, ts, t1)`: the right-hand-side for 1-point functions
   - `l0`: initial condition for the 1-point functions
-  - `update_line(ts, t1)`:
 
-  - `kernel_vert`: the integral kernel of `du/dt1`
-  - `kernel_diag`: the integral kernel of `d/dt1 + d/dt2`
-  - `v0`: initial condition for the 2-time volterra integrals
+  - `kernel_vert(ts, t1, t2, τ)`: the integral kernel of `du/dt1`
+  - `kernel_diag(ts, t1, τ)`: the integral kernel of `du/dt1 + du/dt2`
   
   - `kwargs...`: see `VCABMOptions`
 
@@ -35,10 +33,8 @@ for some initial condition `u0` from `t0` to `tmax`.
     Solving Ordinary Differential Equations I: Nonstiff Problems
 """
 function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
-  update_time=(x...)->nothing,
-  l0=nothing, f_line=nothing, update_line=(x...)->nothing,
-  v0=nothing, kernel_vert=nothing, kernel_diag=nothing,
-  kwargs...)
+  k_vert=nothing, k_diag=nothing, l0=nothing, f_line=nothing,
+  callback=(x...)->nothing, kwargs...)
   
   opts = VCABMOptions(; kwargs...)  
 
@@ -50,14 +46,30 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
   end
   @assert last(t0) < tmax "Only t0 < tmax supported"
 
-  cache = let
-    t = length(t0)
-
-    VCABMCache{eltype(t0)}(opts.kmax, 
-      vcat([[x[t,t′] for x in u0] for t′ in 1:t], [[x[t,t] for x in u0], ]),
-      vcat([f_vert(u0,t0,t,t′) for t′ in 1:t], [f_diag(u0,t0,t), ]))
+  state = begin
+    if isnothing(k_vert)
+      KBState(u0, nothing, [t0; last(t0) + opts.dtini])
+    else
+      v0 = zero.(u0)
+      KBState([u0; v0], v0, [t0; last(t0) + opts.dtini])
+    end
   end
-  state = KBState(u0, v0, [t0; last(t0) + opts.dtini])
+
+  if isnothing(k_vert)
+    fv = (t,t′) -> f_vert(state.u,state.t,t,t′)
+    fd = (t) -> f_diag(state.u,state.t,t)
+  else
+    fv = (t,t′) -> [f_vert(state.u,state.t,t,t′); k_vert(state.u,state.t,t,t′,t)]
+    fd = (t) -> [f_diag(state.u,state.t,t); k_diag(state.u,state.t,t,t)]
+  end
+
+  cache = let
+    t = length(state.t) - 1 # because we added an extra point from dtini
+
+    VCABMCache{eltype(state.t)}(opts.kmax, 
+      vcat([[x[t,t′] for x in state.u] for t′ in 1:t], [[x[t,t] for x in state.u], ]),
+      vcat([fv(t,t′) for t′ in 1:t], [fd(t), ]))
+  end
 
   # All mutations to user arguments are done explicitely here
   while timeloop!(state,cache,tmax,opts)
@@ -68,20 +80,30 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
       foreach(u -> resize!(u, t + min(50, ceil(Int, (tmax - state.t[end]) / (state.t[end] - state.t[end-1])))), state.u)
     end
 
-    f() = Iterators.flatten(((f_vert(state.u,state.t,t,t′) for t′ in 1:t-1), (f_diag(state.u,state.t,t),)))
+    f() = Iterators.flatten(((fv(t,t′) for t′ in 1:t-1), (fd(t),)))
 
     # Predictor
     u_next = predict!(state.t, cache)
     foreach((u, u′) -> foreach(t′ -> u[t,t′] = u′[t′], 1:t), state.u, eachrow(u_next))
-    foreach(t′ -> update_time(state.t, t, t′), 1:t)
+    callback(state.t, t)
+
+    if !isnothing(k_vert)
+      # v_next = predict_volterra!(state.t, cache)
+      # foreach((v, v′) -> foreach(t′ -> v[t,t′] += v′[t′], 1:t), state.v, eachrow(v_next))
+    end
 
     # Corrector
     u_next = correct!(f(), cache)
     foreach((u, u′) -> foreach(t′ -> u[t,t′] = u′[t′], 1:t), state.u, eachrow(u_next))
-    foreach(t′ -> update_time(state.t, t, t′), 1:t)
+    callback(state.t, t)
+
+    if !isnothing(k_vert)
+      # v_next = correct_volterra!(state.t, cache)
+      # foreach((v, v′) -> foreach(t′ -> v[t,t′] += v′[t′], 1:t), state.v, eachrow(v_next))
+    end
 
     # Calculate error and, if the step is accepted, adjust order and add a new cache entry
-    adjust_order!(t′ -> f_vert(state.u,state.t,t′,t), f(), state, cache, opts.kmax, opts.atol, opts.rtol)
+    adjust_order!(t′ -> fv(t′,t), f(), state, cache, opts.kmax, opts.atol, opts.rtol)
   end # timeloop!
   
   foreach(u -> resize!(u, length(state.t)), state.u) # trim solution
@@ -114,7 +136,7 @@ end
 
 # Holds the information about the integration
 mutable struct KBState{U,V,T}
-  u::U
-  v::V
-  t::Vector{T}
+  u::U          # 2-point functions
+  v::V          # 2-point Volterra integrals
+  t::Vector{T}  # Time grid
 end

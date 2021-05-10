@@ -96,8 +96,28 @@ function predict!(times, cache)
     @unpack u_prev,u_next,g,ϕstar_n,k = cache
     ϕ_and_ϕstar!(times, cache, k+1)
     @. u_next = muladd(g[1], ϕstar_n[1], u_prev)
-    for i = 2:k-1 # NOTE: Check this (-1)
+    for i = 2:k-1
       @. u_next = muladd(g[i], ϕstar_n[i], u_next)
+    end
+  end
+  u_next
+end
+function predict_volterra!(times, cache)
+  function δ(j, i)
+    if j == 0
+      return ϕstar_n[1+i]
+    else
+      return (δ(j-1, i) - δ(j-1, i+1))/(times[end-i] - times[end-j])
+    end
+  end
+
+  @inbounds begin
+    @unpack u_next,ϕstar_n,k = cache
+    g = times[end] - times[end-1]
+    @. u_next = g * ϕstar_n[1]
+    for i = 2:k-1
+      g *= (times[end] - times[end-i])
+      @. u_next = muladd(g, ϕstar_n[i], u_next)
     end
   end
   u_next
@@ -105,6 +125,14 @@ end
 
 # Implicit Adams: Section III.5 Eq (5.7)
 function correct!(du, cache)
+  @unpack u_next,g,ϕ_np1,ϕstar_n,k = cache
+  @inbounds begin
+    ϕ_np1!(cache, VectorOfArray(collect(du)), k+1)
+    @. u_next = muladd(g[k], ϕ_np1[k], u_next)
+  end
+  u_next
+end
+function correct_volterra!(du, cache)
   @unpack u_next,g,ϕ_np1,ϕstar_n,k = cache
   @inbounds begin
     ϕ_np1!(cache, VectorOfArray(collect(du)), k+1)
@@ -196,39 +224,27 @@ function ϕ_and_ϕstar!(t, cache, k)
     end
   end
 end
+function ϕ_and_ϕstar_volterra!(t, cache, k)
+  @inbounds begin
+    @unpack f_prev, ϕstar_nm1, ϕ_n, ϕstar_n = cache
+    t = reverse(t)
+    t_next = t[1]
+    t_prev = t[2]
+    β = one(eltype(t))
+
+    for i = 1:k
+      # Calculation of Φ
+      if i == 1
+        ϕ_n[1] .= f_prev
+        ϕstar_n[1] .= f_prev
+      else
+        β = β * (t_next - t[i]) / (t_prev - t[i+1])
+        @. ϕ_n[i] = ϕ_n[i-1] - ϕstar_nm1[i-1]
+        @. ϕstar_n[i] = β * ϕ_n[i]
+      end
+    end
+  end
+end
 
 # Coefficients for the implicit Adams methods
 const γstar = [1,-1/2,-1/12,-1/24,-19/720,-3/160,-863/60480,-275/24192,-33953/3628800,-0.00789255,-0.00678585,-0.00592406,-0.00523669,-0.0046775,-0.00421495,-0.0038269]
-
-# Error estimation and norm: Section II.4 Eq. (4.11)
-@inline function error!(out::AbstractArray,ũ::AbstractArray, u₀::AbstractArray, u₁::AbstractArray, atol::Real, rtol::Real)
-  @. out = error!(out, ũ, u₀, u₁, atol, rtol)
-  out
-end
-@inline function error!(out::AbstractArray{<:Number},ũ::AbstractArray{<:Number}, u₀::AbstractArray{<:Number}, u₁::AbstractArray{<:Number}, atol::Real, rtol::Real)
-  @. out = error_estimate(ũ, u₀, u₁, atol, rtol)
-  out
-end
-@inline function error_estimate(ũ::Number, u₀::Number, u₁::Number, atol::Real, rtol::Real)
-  ũ / (atol + max(norm(u₀), norm(u₁)) * rtol)
-end
-@inline norm(u) = LinearAlgebra.norm(u) / sqrt(total_length(u))
-@inline total_length(u::Number) = length(u)
-@inline total_length(u::AbstractArray{<:Number}) = length(u)
-@inline total_length(u::AbstractArray{<:AbstractArray}) = sum(total_length, u)
-@inline total_length(u::RecursiveArrayTools.VectorOfArray) = sum(total_length, u.u)
-
-# Starting Step Size: Section II.4
-function initial_step(f, u0, t0, k, atol, rtol; f0=f(u0, t0))
-  sc = atol + rtol * norm(u0) 
-  d0 = norm(u0 ./ sc)
-  d1 = norm(f0 ./ sc)
-
-  dt0 = min(d0,d1) < 1e-5 ? 1e-6 : 1e-2 * d0/d1
-  
-  f1 = f(muladd(dt0, f0, u0), t0+dt0)
-  d2 = norm((f1 - f0) ./ sc) / dt0
-  
-  dt1 = max(d1,d2) <= 1e-15 ? max(1e-6, 1e-3 * dt0) : (1e-2 / max(d1,d2))^(1/(k+1))
-  return min(dt1, 1e2 * dt0)
-end

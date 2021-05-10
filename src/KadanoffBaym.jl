@@ -12,7 +12,6 @@ export kbsolve
 include("utils.jl")
 include("gf.jl")
 include("vcabm.jl")
-include("volterra.jl")
 include("kb.jl")
 
 @init @require FFTW="7a1cc6ca-52ef-59f5-83cd-3a7055c09341" begin
