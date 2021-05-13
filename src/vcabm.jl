@@ -43,23 +43,29 @@ mutable struct VCABMCache{T,U}
   k::Int
   error_k::T
 
-  function VCABMCache{T}(kmax, u_prev, f_prev) where {T}
-    u_prev = VectorOfArray(u_prev)
-    f_prev = VectorOfArray(f_prev)
-
-    ϕ_n = [zero.(f_prev) for _ in 1:kmax+1]
-    ϕstar_nm = [zero.(f_prev) for _ in 1:kmax+1]
-    ϕstar_n = [zero.(f_prev) for _ in 1:kmax+1]
-    ϕ_np = [zero.(f_prev) for _ in 1:kmax+2]
+  function VCABMCache{T}(kmax, u_prev::U, f_prev::U) where {T,U}
     new{T,typeof(u_prev)}(
       u_prev,zero.(u_prev),zero.(u_prev),f_prev,
-      ϕ_n,ϕ_np,ϕstar_n,ϕstar_nm,
-      zeros(T,kmax+1,kmax+1),zeros(T,kmax+1),1,T(Inf))
+      [zero.(f_prev) for _ in 1:kmax+1],
+      [zero.(f_prev) for _ in 1:kmax+2],
+      [zero.(f_prev) for _ in 1:kmax+1],
+      [zero.(f_prev) for _ in 1:kmax+1],
+      zeros(T,kmax+1,kmax+1),zeros(T,kmax+1),1,zero(T))
+  end
+end
+
+mutable struct VCABMCacheVolterra{T,V}
+  v_next::V
+  f_prev::Vector{V}
+  g::Vector{T}
+  k::Int
+  function VCABMCacheVolterra{T}(kmax, f_prev::V) where {T,V}
+    new{T, typeof(v_next)}(v_next, [zero.(f_prev) for _ in 1:kmax+1], zeros(T, kmax+1), 1)
   end
 end
 
 # Explicit Adams: Section III.5 Eq. (5.5)
-function predict!(cache, times)
+function predict!(cache::VCABMCache, times)
   @inbounds begin
     @unpack u_prev,u_next,g,ϕstar_n,k = cache
     ϕ_and_ϕstar!(cache, times, k+1)
@@ -71,46 +77,19 @@ function predict!(cache, times)
   end
   u_next
 end
-function predict_volterra!(cache, times)
-  @unpack u_next, ϕstar_n, k = cache
-  t = reverse(times)
-  @inbounds begin
-    δ(j, n=1) = j == 1 ? ϕstar_n[n] : (δ(j-1, n) - δ(j-1, n+1))/(t[n] - t[n+j-1])
-    g = t[1] - t[2]
-    @. u_next = g * δ(1)
-    for i = 2:k-1
-      g *= (t[1] - t[1+i])
-      @. u_next = muladd(g, δ(i), u_next)
-    end
-  end
-  u_next
-end
 
 # Implicit Adams: Section III.5 Eq (5.7)
-function correct!(cache, du)
+function correct!(cache::VCABMCache, f)
   @unpack u_next,g,ϕ_np1,ϕstar_n,k = cache
   @inbounds begin
-    ϕ_np1!(cache, VectorOfArray(collect(du)), k+1)
+    ϕ_np1!(cache, f(), k+1)
     @. u_next = muladd(g[k], ϕ_np1[k], u_next)
   end
   u_next
 end
-function correct_volterra!(v_next, cache, times)
-  @unpack ϕstar_n, k = cache
-  t = reverse(times)
-  @inbounds begin
-    δ(j, n=1) = j == 1 ? ϕstar_n[n] : (δ(j-1, n) - δ(j-1, n+1))/(t[n] - t[n+j-1])
-    g = t[1] - t[2]
-    for i = 2:k
-      g *= (t[1] - t[1+i])
-    end
-    @. v_next = muladd(g, δ(k), v_next)
-  end
-  v_next
-end
 
 # Control order: Section III.7 Eq. (7.7)
-function adjust_cache!(cache, times, f_vert, f, kmax, atol, rtol)
+function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
   @inbounds begin
     @unpack u_prev,u_next,g,ϕ_np1,ϕstar_n,k,u_erro = cache
 
@@ -122,7 +101,7 @@ function adjust_cache!(cache, times, f_vert, f, kmax, atol, rtol)
       return
     end
 
-    cache.f_prev = VectorOfArray([f...])
+    cache.f_prev = f()
 
     if length(times)<=5 || k<3
       cache.k = min(k+1, 3, kmax)
@@ -143,16 +122,18 @@ function adjust_cache!(cache, times, f_vert, f, kmax, atol, rtol)
     @. cache.u_prev = cache.u_next
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1    
   end
-
-  # Add vertical cache at u[t,t]
-  extend_cache!(cache, f_vert, times)
 end
 
-function extend_cache!(cache, f_vert, times)
+function extend!(cache::VCABMCache, f_vert, times)
   @unpack f_prev, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, k = cache
-  t = length(times)
 
-  insert!(f_prev.u, t, f_vert(t))
+  t = length(times) - 1 # `t` from the last iteration
+
+  if cache.error_k > one(cache.error_k)
+    return
+  end
+  
+  insert!(f_prev.u, t, f_vert(t, t))
   insert!(u_prev.u, t, copy.(u_prev[t]))
   insert!(u_next.u, t, zero.(u_prev[t]))
   insert!(u_erro.u, t, zero.(u_erro[t]))
@@ -163,7 +144,7 @@ function extend_cache!(cache, f_vert, times)
   _ϕstar_nm1 = [zero.(f_prev[t]) for _ in eachindex(ϕstar_nm1)]
 
   for k′ in 1:k
-    ϕ_and_ϕstar!((f_prev=f_vert(max(1,t-1-k+k′)), ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, 
+    ϕ_and_ϕstar!((f_prev=f_vert(max(1,t-1-k+k′), t), ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, 
       ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t-k+k′)), k′)
     _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
   end
@@ -174,24 +155,69 @@ function extend_cache!(cache, f_vert, times)
   foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕstar_nm1, _ϕstar_nm1)
 end
 
+function predict!(cache::VCABMCacheVolterra, times)
+  @unpack f_prev, g, k = cache
+  t = reverse(times)
+  @inbounds begin
+    δ(j, n=1) = j == 0 ? f_prev[n] : (δ(j-1, n) - δ(j-1, n+1))/(t[n+1] - t[n+1+j])
+    g[1] = t[1] - t[2]
+    cache_volterra.v_next = g[1] * δ(0)
+    for i = 2:k-1
+      g[i] = g[i-1] * (t[1] - t[1+i])
+      @. cache_volterra.v_next = muladd(g[i], δ(i-1), v_next)
+    end
+  end
+  cache_volterra.v_next
+end
+
+function correct!(cache::VCABMCacheVolterra, u_next, times)
+  @unpack v_next, f_prev, g, k = cache
+
+  f_prev[1] = u_next
+
+  t = reverse(times)
+  @inbounds begin
+    δ(j, n=1) = j == 0 ? f_prev[n] : (δ(j-1, n) - δ(j-1, n+1))/(t[n+1] - t[n+1+j])
+    g[k] = g[k-1] * (t[1] - t[1+k])
+    @. v_next = muladd(g[k], δ(k-1), v_next)
+  end
+  v_next
+end
+
+function extend!(cache::VCABMCacheVolterra, times, k_vert, k)
+  cache_volterra.k = cache.k
+
+  t = length(times)
+
+  # Extend
+  for k in 1:k-1
+    insert!(f_prev[k].u, t, integrate(view(times, 1:t-1), [k_vert(s) for s in 1:(t-1)]))
+  end
+
+  for k in k:-1:2
+    f_prev[k] = f_prev[k-1]
+  end
+
+  t = length(times)
+
+  # Update f_prev
+  for k in 2:k
+    @. f_prev[k] += 0.5 * (times[t-1] - times[t-2]) * (kernel(t-1-k, t-1) + kernel(t-1-k, t-2)) # TODO: beyond trapezoidal
+  end
+end
+
 # Section III.5: Eq (5.9-5.10)
 function ϕ_and_ϕstar!(cache, times, k)
   @unpack f_prev, ϕstar_nm1, ϕ_n, ϕstar_n = cache
   @inbounds begin
     t = reverse(times)
-    t_next = t[1]
-    t_prev = t[2]
     β = one(eltype(t))
-
-    for i = 1:k
-      if i == 1
-        ϕ_n[1] .= f_prev
-        ϕstar_n[1] .= f_prev
-      else
-        β = β * (t_next - t[i]) / (t_prev - t[i+1])
-        @. ϕ_n[i] = ϕ_n[i-1] - ϕstar_nm1[i-1]
-        @. ϕstar_n[i] = β * ϕ_n[i]
-      end
+    ϕ_n[1] .= f_prev
+    ϕstar_n[1] .= f_prev
+    for i = 2:k
+      β = β * (t[1] - t[i]) / (t[2] - t[i+1])
+      @. ϕ_n[i] = ϕ_n[i-1] - ϕstar_nm1[i-1]
+      @. ϕstar_n[i] = β * ϕ_n[i]
     end
   end
 end
@@ -210,19 +236,18 @@ function g_coeffs!(cache, times, k)
   @unpack c, g = cache
   @inbounds begin
     t = reverse(times)
-    t_next = t[1]
-    t_prev = t[2]
+    dt = t[1] - t[2]
     for i = 1:k
       for q = 1:k-(i-1)
         if i > 2
-          c[i,q] = muladd(-(t_next - t_prev)/(t_next - t[i]), c[i-1,q+1], c[i-1,q])
+          c[i,q] = muladd(-dt/(t[1] - t[i]), c[i-1,q+1], c[i-1,q])
         elseif i == 1
           c[i,q] = inv(q)
         elseif i == 2
           c[i,q] = inv(q*(q+1))
         end
       end
-      g[i] = c[i,1] * (t_next - t_prev)
+      g[i] = c[i,1] * dt
     end
   end
 end

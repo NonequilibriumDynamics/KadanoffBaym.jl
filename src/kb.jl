@@ -45,27 +45,26 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
 
   state = begin
     if isnothing(k_vert)
-      KBState(u0, nothing, [t0; last(t0) + opts.dtini])
+      KBState(u0, nothing, t0)
     else
       v0 = zero.(u0)
-      KBState([u0; v0], v0, [t0; last(t0) + opts.dtini])
+      KBState([u0; v0], v0, t0)
     end
   end
 
   if isnothing(k_vert)
     fv = (t,t′) -> f_vert(state.u,state.t,t,t′)
-    fd = (t) -> f_diag(state.u,state.t,t)
+    f = t -> VectorOfArray([[fv(t,t′) for t′ in 1:t-1]; [f_diag(state.u,state.t,t),]])
   else
+    k = (t,s) -> VectorOfArray([[k_vert(state.u,state.t,t,t′,s) for t′ in 1:t-1]; [k_diag(state.u,state.t,t,s),]])
     fv = (t,t′) -> [f_vert(state.u,state.t,t,t′); k_vert(state.u,state.t,t,t′,t)]
-    fd = (t) -> [f_diag(state.u,state.t,t); k_diag(state.u,state.t,t,t)]
+    f = t -> VectorOfArray([[fv(t,t′) for t′ in 1:t-1]; [[f_diag(state.u,state.t,t); k_diag(state.u,state.t,t,t)],]])
   end
 
   cache = let
-    t = length(state.t) - 1 # because we added an extra point from dtini
-
-    VCABMCache{eltype(state.t)}(opts.kmax, 
-      vcat([[x[t,t′] for x in state.u] for t′ in 1:t], [[x[t,t] for x in state.u], ]),
-      vcat([fv(t,t′) for t′ in 1:t], [fd(t), ]))
+    t = length(state.t)
+    u = VectorOfArray([[x[t,t′] for x in state.u] for t′ in 1:t])
+    VCABMCache{eltype(state.t)}(opts.kmax, u, typeof(u)(f(t).u))
   end
 
   # All mutations to user arguments are done explicitely here
@@ -77,7 +76,12 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
       foreach(u -> resize!(u, t + min(50, ceil(Int, (tmax - state.t[end]) / (state.t[end] - state.t[end-1])))), state.u)
     end
 
-    f() = Iterators.flatten(((fv(t,t′) for t′ in 1:t-1), (fd(t),)))
+    # Extend caches
+    extend!(cache, fv, state.t)
+
+    if !isnothing(k_vert)
+      # extend!(cache_volterra, state.t, (t,t′,s) -> k_vert(state.u, state.t, t, t′, s))
+    end
 
     # Predictor
     u_next = predict!(cache, state.t)
@@ -85,22 +89,22 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
     callback(state.t, t)
 
     if !isnothing(k_vert)
-      v_next = predict_volterra!(state.t)
-      foreach((v, v′) -> foreach(t′ -> v[t,t′] += v′[t′], 1:t), state.v, eachrow(v_next))
+      # v_next = predict!(cache_volterra, state.t)
+      # foreach((v, v′) -> foreach(t′ -> v[t,t′] += v′[t′], 1:t), state.v, eachrow(v_next))
     end
 
     # Corrector
-    u_next = correct!(cache, f())
+    u_next = correct!(cache, () -> f(t))
     foreach((u, u′) -> foreach(t′ -> u[t,t′] = u′[t′], 1:t), state.u, eachrow(u_next))
     callback(state.t, t)
 
     if !isnothing(k_vert)
-      v_next = correct_volterra!(v_next, state.t)
-      foreach((v, v′) -> foreach(t′ -> v[t,t′] += v′[t′], 1:t), state.v, eachrow(v_next))
+      # v_next = correct!(cache_volterra, [[[v[t,t′] for v in state.v] for t′ in  1:(t-1)]; [[v[t,t] for v in state.v],]], state.t)
+      # foreach((v, v′) -> foreach(t′ -> v[t,t′] += v′[t′], 1:t), state.v, eachrow(v_next))
     end
 
-    # Calculate error and adjust order and cache length
-    adjust_cache!(cache, state.t, t′ -> fv(t′,t), f(), opts.kmax, opts.atol, opts.rtol)
+    # Calculate error and adjust order
+    adjust!(cache, state.t, () -> f(t), opts.kmax, opts.atol, opts.rtol)
   end # timeloop!
   
   foreach(u -> resize!(u, length(state.t)), state.u) # trim solution
@@ -108,6 +112,11 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
 end
 
 function timeloop!(state,cache,tmax,opts)
+  if isone(cache.k) # first step
+    push!(state.t, last(state.t) + opts.dtini)
+    return true
+  end
+
   # II.4 Automatic Step Size Control, Equation (4.13)
   q = max(inv(opts.qmax), min(inv(opts.qmin), cache.error_k^(1/(cache.k+1)) / opts.γ))
   dt = min((state.t[end] - state.t[end-1]) / q, opts.dtmax)
@@ -132,7 +141,7 @@ function timeloop!(state,cache,tmax,opts)
 end
 
 # Holds the information about the integration
-mutable struct KBState{U,V,T}
+struct KBState{U,V,T}
   u::U          # 2-point functions
   v::V          # 2-point Volterra integrals
   t::Vector{T}  # Time grid

@@ -44,3 +44,14 @@ _last2() = throw(ArgumentError("Cannot call last2 on an empty tuple."))
 _last2(v) = throw(ArgumentError("Cannot call last2 on 1-element tuple."))
 @inline _last2(v1,v2) = (v1, v2)
 @inline _last2(v, t...) = _last2(t...)
+
+function trapezium(x::AbstractVector, y::AbstractVector)
+  if isone(length(x))
+    return zero(first(y))
+  end
+  @inbounds retval = (x[2] - x[1]) * (y[1] + y[2])
+  @inbounds @fastmath @simd for i in 2:(length(y) - 1)
+    retval += (x[i+1] - x[i]) * (y[i] + y[i+1])
+  end
+  return 1//2 * retval
+end
