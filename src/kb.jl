@@ -113,7 +113,8 @@ end
 
 function timeloop!(state,cache,tmax,opts)
   if isone(cache.k) # first step
-    push!(state.t, last(state.t) + opts.dtini)
+    dt = iszero(opts.dtini) ? initial_step(cache.f_prev, cache.u_prev, opts.atol, opts.rtol) : opts.dtini
+    push!(state.t, last(state.t) + dt)
     return true
   end
 

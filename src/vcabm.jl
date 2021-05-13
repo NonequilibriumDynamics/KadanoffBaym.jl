@@ -15,7 +15,7 @@ struct VCABMOptions
   stop::Function
 end
 
-function VCABMOptions(; atol=1e-8, rtol=1e-6, dtini=1e-6, dtmax=Inf, qmax=5, 
+function VCABMOptions(; atol=1e-8, rtol=1e-6, dtini=0.0, dtmax=Inf, qmax=5, 
   qmin=1//5, γ=9//10, kmax=12, stop=()->false)
 
   if kmax < 1 || kmax > 12
