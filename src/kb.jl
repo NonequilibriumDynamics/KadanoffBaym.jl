@@ -56,9 +56,12 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
     fv = (t,t′) -> f_vert(state.u,state.t,t,t′)
     f = t -> VectorOfArray([[fv(t,t′) for t′ in 1:t-1]; [f_diag(state.u,state.t,t),]])
   else
-    k = (t,s) -> VectorOfArray([[k_vert(state.u,state.t,t,t′,s) for t′ in 1:t-1]; [k_diag(state.u,state.t,t,s),]])
+    kernel = (t,s) -> VectorOfArray([[k_vert(state.u,state.t,t,t′,s) for t′ in 1:t-1]; [k_diag(state.u,state.t,t,s),]])
     fv = (t,t′) -> [f_vert(state.u,state.t,t,t′); k_vert(state.u,state.t,t,t′,t)]
     f = t -> VectorOfArray([[fv(t,t′) for t′ in 1:t-1]; [[f_diag(state.u,state.t,t); k_diag(state.u,state.t,t,t)],]])
+
+    t = length(state.t)
+    cache_volterra = VCABMCacheVolterra{eltype(state.t)}(opts.kmax, VectorOfArray([[v[t,t′] for v in state.v] for t′ in 1:t]))
   end
 
   cache = let
@@ -78,29 +81,26 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
 
     # Extend caches
     extend!(cache, fv, state.t)
-
     if !isnothing(k_vert)
-      # extend!(cache_volterra, state.t, (t,t′,s) -> k_vert(state.u, state.t, t, t′, s))
+      extend!(cache_volterra, state.t, (t,t′,s) -> k_vert(state.u, state.t, t, t′, s), (t,s) -> k_diag(state.u, state.t, t, s), cache)
     end
 
     # Predictor
     u_next = predict!(cache, state.t)
     foreach((u, u′) -> foreach(t′ -> u[t,t′] = u′[t′], 1:t), state.u, eachrow(u_next))
     callback(state.t, t)
-
     if !isnothing(k_vert)
-      # v_next = predict!(cache_volterra, state.t)
-      # foreach((v, v′) -> foreach(t′ -> v[t,t′] += v′[t′], 1:t), state.v, eachrow(v_next))
+      v_next = predict!(cache_volterra, state.t, VectorOfArray([[v[t,t′] for v in state.v] for t′ in 1:t]))
+      foreach((v, v′) -> foreach(t′ -> v[t,t′] = v′[t′], 1:t), state.v, eachrow(v_next))
     end
 
     # Corrector
     u_next = correct!(cache, () -> f(t))
     foreach((u, u′) -> foreach(t′ -> u[t,t′] = u′[t′], 1:t), state.u, eachrow(u_next))
     callback(state.t, t)
-
     if !isnothing(k_vert)
-      # v_next = correct!(cache_volterra, [[[v[t,t′] for v in state.v] for t′ in  1:(t-1)]; [[v[t,t] for v in state.v],]], state.t)
-      # foreach((v, v′) -> foreach(t′ -> v[t,t′] += v′[t′], 1:t), state.v, eachrow(v_next))
+      v_next = correct!(cache_volterra, state.t, VectorOfArray([[v[t,t′] for v in state.v] for t′ in 1:t]))
+      foreach((v, v′) -> foreach(t′ -> v[t,t′] = v′[t′], 1:t), state.v, eachrow(v_next))
     end
 
     # Calculate error and adjust order

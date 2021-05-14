@@ -55,19 +55,22 @@ mutable struct VCABMCache{T,U}
 end
 
 mutable struct VCABMCacheVolterra{T,V}
+  v_prev::V
   v_next::V
   f_prev::Vector{V}
   g::Vector{T}
   k::Int
-  function VCABMCacheVolterra{T}(kmax, f_prev::V) where {T,V}
-    new{T, typeof(v_next)}(v_next, [zero.(f_prev) for _ in 1:kmax+1], zeros(T, kmax+1), 1)
+  function VCABMCacheVolterra{T}(kmax, v_prev::V) where {T,V}
+    new{T, typeof(v_prev)}(
+      v_prev, zero.(v_prev), [zero.(v_prev) for _ in 1:kmax+1], 
+      zeros(T, kmax+1), 1)
   end
 end
 
 # Explicit Adams: Section III.5 Eq. (5.5)
 function predict!(cache::VCABMCache, times)
+  @unpack u_prev,u_next,g,ϕstar_n,k = cache
   @inbounds begin
-    @unpack u_prev,u_next,g,ϕstar_n,k = cache
     ϕ_and_ϕstar!(cache, times, k+1)
     g_coeffs!(cache, times, k+1)
     @. u_next = muladd(g[1], ϕstar_n[1], u_prev)
@@ -132,7 +135,7 @@ function extend!(cache::VCABMCache, f_vert, times)
   if cache.error_k > one(cache.error_k)
     return
   end
-  
+
   insert!(f_prev.u, t, f_vert(t, t))
   insert!(u_prev.u, t, copy.(u_prev[t]))
   insert!(u_next.u, t, zero.(u_prev[t]))
@@ -155,54 +158,66 @@ function extend!(cache::VCABMCache, f_vert, times)
   foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕstar_nm1, _ϕstar_nm1)
 end
 
-function predict!(cache::VCABMCacheVolterra, times)
-  @unpack f_prev, g, k = cache
-  t = reverse(times)
-  @inbounds begin
-    δ(j, n=1) = j == 0 ? f_prev[n] : (δ(j-1, n) - δ(j-1, n+1))/(t[n+1] - t[n+1+j])
-    g[1] = t[1] - t[2]
-    cache_volterra.v_next = g[1] * δ(0)
-    for i = 2:k-1
-      g[i] = g[i-1] * (t[1] - t[1+i])
-      @. cache_volterra.v_next = muladd(g[i], δ(i-1), v_next)
-    end
-  end
-  cache_volterra.v_next
-end
-
-function correct!(cache::VCABMCacheVolterra, u_next, times)
+function predict!(cache::VCABMCacheVolterra, times, prev)
   @unpack v_next, f_prev, g, k = cache
-
-  f_prev[1] = u_next
-
-  t = reverse(times)
   @inbounds begin
+    # Calculate gs
+    t = reverse(times)
+    g[1] = t[1] - t[2]
+    for i = 2:k
+      g[i] = g[i-1] * (t[1] - t[1+i])
+    end
+
     δ(j, n=1) = j == 0 ? f_prev[n] : (δ(j-1, n) - δ(j-1, n+1))/(t[n+1] - t[n+1+j])
-    g[k] = g[k-1] * (t[1] - t[1+k])
-    @. v_next = muladd(g[k], δ(k-1), v_next)
+
+    @. v_next = prev
+    @. f_prev[1] = prev
+
+    for i = 2:k-1
+      v_next .= muladd(g[i], δ(i-1), v_next)
+    end
   end
   v_next
 end
 
-function extend!(cache::VCABMCacheVolterra, times, k_vert, k)
-  cache_volterra.k = cache.k
+function correct!(cache::VCABMCacheVolterra, times, prev)
+  @unpack v_next, f_prev, g, k = cache
+  @inbounds begin
+    t = reverse(times)
+    δ(j, n=1) = j == 0 ? f_prev[n] : (δ(j-1, n) - δ(j-1, n+1))/(t[n+1] - t[n+1+j])
 
-  t = length(times)
+    @. v_next = prev
+    @. f_prev[1] = prev
+
+    v_next .= muladd(g[k], δ(k-1), v_next)
+  end
+  v_next
+end
+
+function extend!(cache::VCABMCacheVolterra, times, k_vert, k_diag, other_cache)
+  if other_cache.error_k > one(other_cache.error_k)
+    return
+  end
+
+  cache.k = other_cache.k
+
+  @unpack f_prev, v_prev, v_next, k = cache
+  t = length(times) - 1
 
   # Extend
-  for k in 1:k-1
-    insert!(f_prev[k].u, t, integrate(view(times, 1:t-1), [k_vert(s) for s in 1:(t-1)]))
+  foreach(f -> insert!(f.u, t, copy.(f[t])), f_prev)
+  insert!(v_prev.u, t, copy.(v_prev[t]))
+  insert!(v_next.u, t, zero.(v_next[t]))
+
+  # Shift and update f_prev
+  for k′ in k:-1:2
+    @. f_prev[k′] = f_prev[k′-1]
   end
-
-  for k in k:-1:2
-    f_prev[k] = f_prev[k-1]
-  end
-
-  t = length(times)
-
-  # Update f_prev
-  for k in 2:k
-    @. f_prev[k] += 0.5 * (times[t-1] - times[t-2]) * (kernel(t-1-k, t-1) + kernel(t-1-k, t-2)) # TODO: beyond trapezoidal
+  for k′ in 2:k
+    for t′ in 1:t
+      f_prev[k′].u[t′] += 0.5 * (times[t] - times[t-1]) * (k_vert(t+1-k′, t′, t) + k_vert(t+1-k′, t′, t-1))
+    end
+    f_prev[k′].u[t+1] += 0.5 * (times[t] - times[t-1]) * (k_diag(t+1-k′, t) + k_diag(t+1-k′, t-1))
   end
 end
 
