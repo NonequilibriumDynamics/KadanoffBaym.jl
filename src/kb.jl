@@ -43,31 +43,23 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
   end
   @assert last(t0) < tmax "Only t0 < tmax supported"
 
-  state = begin
-    if isnothing(k_vert)
-      KBState(u0, nothing, t0)
-    else
-      v0 = zero.(u0)
-      KBState([u0; v0], v0, t0)
-    end
-  end
+  state = KBState(u0, isnothing(k_vert) ? nothing : zero.(u0), t0)
 
-  if isnothing(k_vert)
-    fv = (t,t′) -> f_vert(state.u,state.t,t,t′)
-    f = t -> VectorOfArray([[fv(t,t′) for t′ in 1:t-1]; [f_diag(state.u,state.t,t),]])
-  else
-    kernel = (t,s) -> VectorOfArray([[k_vert(state.u,state.t,t,t′,s) for t′ in 1:t-1]; [k_diag(state.u,state.t,t,s),]])
-    fv = (t,t′) -> [f_vert(state.u,state.t,t,t′); k_vert(state.u,state.t,t,t′,t)]
-    f = t -> VectorOfArray([[fv(t,t′) for t′ in 1:t-1]; [[f_diag(state.u,state.t,t); k_diag(state.u,state.t,t,t)],]])
+  u0 = isnothing(k_vert) ? state.u : [state.u; state.v]
 
-    t = length(state.t)
-    cache_volterra = VCABMCacheVolterra{eltype(state.t)}(opts.kmax, VectorOfArray([[v[t,t′] for v in state.v] for t′ in 1:t]))
-  end
+  f = t -> VectorOfArray([[f_vert(u0,state.t,t,t′) for t′ in 1:t-1]; [f_diag(u0,state.t,t),]])
+  k = (t,s) -> VectorOfArray([[k_vert(u0,state.t,t,t′,s) for t′ in 1:t-1]; [k_diag(u0,state.t,t,s),]])
 
   cache = let
     t = length(state.t)
     u = VectorOfArray([[x[t,t′] for x in state.u] for t′ in 1:t])
     VCABMCache{eltype(state.t)}(opts.kmax, u, typeof(u)(f(t).u))
+  end
+
+  if !isnothing(k_vert)
+    t = length(state.t)
+    v = VectorOfArray([[v[t,t′] for v in state.v] for t′ in 1:t])
+    cache_v = VCABMVolterraCache{eltype(state.t)}(opts.kmax, v, typeof(v)(k(t,t).u))
   end
 
   # All mutations to user arguments are done explicitely here
@@ -76,35 +68,36 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
 
     # Resize solution
     if t > (last ∘ size ∘ first)(state.u)
-      foreach(u -> resize!(u, t + min(50, ceil(Int, (tmax - state.t[end]) / (state.t[end] - state.t[end-1])))), state.u)
+      s = min(50, ceil(Int, (tmax - state.t[end]) / (state.t[end] - state.t[end-1])))
+      foreach(u -> resize!(u, s + t), state.u)
+      !isnothing(k_vert) && foreach(v -> resize!(v, s + t), state.v)
     end
 
     # Extend caches
-    extend!(cache, fv, state.t)
-    if !isnothing(k_vert)
-      extend!(cache_volterra, state.t, (t,t′,s) -> k_vert(state.u, state.t, t, t′, s), (t,s) -> k_diag(state.u, state.t, t, s), cache)
-    end
+    extend!(cache, (t,t′) -> f_vert(u0,state.t,t,t′), state.t)
+    !isnothing(k_vert) && extend!(cache_v, state.t, cache)      
 
     # Predictor
     u_next = predict!(cache, state.t)
     foreach((u, u′) -> foreach(t′ -> u[t,t′] = u′[t′], 1:t), state.u, eachrow(u_next))
-    callback(state.t, t)
     if !isnothing(k_vert)
-      v_next = predict!(cache_volterra, state.t, VectorOfArray([[v[t,t′] for v in state.v] for t′ in 1:t]))
+      v_next = predict!(cache_v, state.t, cache.k)
       foreach((v, v′) -> foreach(t′ -> v[t,t′] = v′[t′], 1:t), state.v, eachrow(v_next))
     end
+    callback(state.t, t)
 
     # Corrector
     u_next = correct!(cache, () -> f(t))
     foreach((u, u′) -> foreach(t′ -> u[t,t′] = u′[t′], 1:t), state.u, eachrow(u_next))
-    callback(state.t, t)
     if !isnothing(k_vert)
-      v_next = correct!(cache_volterra, state.t, VectorOfArray([[v[t,t′] for v in state.v] for t′ in 1:t]))
+      v_next = correct!(cache_v, state.t, cache.k)
       foreach((v, v′) -> foreach(t′ -> v[t,t′] = v′[t′], 1:t), state.v, eachrow(v_next))
     end
+    callback(state.t, t)
 
     # Calculate error and adjust order
-    adjust!(cache, state.t, () -> f(t), opts.kmax, opts.atol, opts.rtol)
+    # adjust!(cache, state.t, () -> f(t), opts.kmax, opts.atol, opts.rtol)
+    adjust!(cache, cache_v, state.t, () -> f(t), opts.kmax, opts.atol, opts.rtol)
   end # timeloop!
   
   foreach(u -> resize!(u, length(state.t)), state.u) # trim solution
@@ -122,6 +115,10 @@ function timeloop!(state,cache,tmax,opts)
   q = max(inv(opts.qmax), min(inv(opts.qmin), cache.error_k^(1/(cache.k+1)) / opts.γ))
   dt = min((state.t[end] - state.t[end-1]) / q, opts.dtmax)
 
+  if dt < 1e-8
+    @assert false
+  end
+  
   # Remove t_prev if last step failed
   if cache.error_k > one(cache.error_k)
     pop!(state.t) 

@@ -54,16 +54,18 @@ mutable struct VCABMCache{T,U}
   end
 end
 
-mutable struct VCABMCacheVolterra{T,V}
+mutable struct VCABMVolterraCache{T,V}
   v_prev::V
   v_next::V
   f_prev::Vector{V}
-  g::Vector{T}
-  k::Int
-  function VCABMCacheVolterra{T}(kmax, v_prev::V) where {T,V}
-    new{T, typeof(v_prev)}(
-      v_prev, zero.(v_prev), [zero.(v_prev) for _ in 1:kmax+1], 
-      zeros(T, kmax+1), 1)
+  ϕstar_n::Vector{V}
+  ϕ_np1::Vector{V}
+
+  function VCABMVolterraCache{T}(kmax, v_prev::V, f_prev::V) where {T,V}
+    new{T, typeof(f_prev)}(v_prev, zero.(v_prev), 
+      [zero.(f_prev) for _ in 1:kmax+1],
+      [zero.(f_prev) for _ in 1:kmax+1],
+      [zero.(f_prev) for _ in 1:kmax+2])
   end
 end
 
@@ -158,83 +160,144 @@ function extend!(cache::VCABMCache, f_vert, times)
   foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕstar_nm1, _ϕstar_nm1)
 end
 
-function predict!(cache::VCABMCacheVolterra, times, prev)
-  @unpack v_next, f_prev, g, k = cache
+function predict!(cache::VCABMVolterraCache, times, k::Int)
+  @unpack ϕstar_n, v_prev, v_next = cache
   @inbounds begin
-    t = length(times)
+    t = length(times) - 1
 
-    # Calculate gs
-    g[1] = times[t] - times[t-1]
-    for i = 2:k
-      g[i] = g[i-1] * (times[t] - times[t-i])
+    fn(i, n=t) = 1/5 * (times[i]^5 + (times[n] - times[i])^5) * one.(v_next)
+    δ(j, n=t) = j == 0 ? fn(n,n) : (δ(j-1, n) - δ(j-1, n-1))/(times[n] - times[n-j])
+
+    # j = 0 term vanishes due to the derivative
+    for j in 1:(k-1)
+      βⱼ = prod(i -> (times[t+1] - times[t-i]), 0:(j-1); init=1)
+      ϕstar_n[j] = βⱼ * δ(j)
     end
 
-    δ(j, n=t-1) = j == 0 ? f_prev[t-n] : (δ(j-1, n) - δ(j-1, n-1))/(times[n] - times[n-j])
-
-    @. v_next = prev
-    @. f_prev[1] = prev
-
-    for j = 2:k-1
-      v_next .= muladd(g[j], δ(j-1), v_next)
+    for j = 1:(k-1)
+      @. v_next += ϕstar_n[j]
     end
   end
   v_next
 end
 
-function correct!(cache::VCABMCacheVolterra, times, prev)
-  @unpack v_next, f_prev, g, k = cache
+function correct!(cache::VCABMVolterraCache, times, k::Int)
+  @unpack v_next, ϕ_np1, ϕstar_n = cache
   @inbounds begin
-    t = length(times)
-    δ(j, n=t-1) = j == 0 ? f_prev[t-n] : (δ(j-1, n) - δ(j-1, n-1))/(times[n] - times[n-j])
+    t = length(times) - 1
+    
+    fn(i, n) = 1/5 * (times[i]^5 + (times[n] - times[i])^5) * one.(v_next)
+    δ(j, n=t+1) = j == 0 ? fn(n,n) : (δ(j-1, n) - δ(j-1, n-1))/(times[n] - times[n-j])
 
-    @. v_next = prev
-    @. f_prev[1] = prev
-
-    v_next .= muladd(g[k], δ(k-1), v_next)
+    for j in 1:min(k+2,t)
+      βⱼ = prod(i -> (times[t+1] - times[t-i]), 0:(j-1); init=1)
+      ϕ_np1[j] = βⱼ * δ(j)
+    end
+    
+    v_next += ϕ_np1[k]
   end
   v_next
 end
 
-function extend!(cache::VCABMCacheVolterra, times, k_vert, k_diag, other_cache)
-  if other_cache.error_k > one(other_cache.error_k)
+function adjust!(cache::VCABMCache, cache_v::VCABMVolterraCache, times, f, kmax, atol, rtol)
+  @inbounds begin
+    @unpack u_prev, u_next, u_erro, k = cache
+    @unpack v_prev, v_next = cache_v
+
+    # Calculate error: Section III.7 Eq. (7.3)
+    cache.error_k = norm(cache.g[k+1] - cache.g[k]) * norm(error!(u_erro, cache.ϕ_np1[k+1], u_prev, u_next, atol, rtol))
+    cache.error_k += norm(error!(u_erro, cache_v.ϕ_np1[k+1], v_prev, v_next, atol, rtol))
+    cache.error_k /= sqrt(2)
+
+    # Fail step: Section III.7 Eq. (7.4)
+    if cache.error_k > one(cache.error_k)
+      return
+    end
+
+    cache.f_prev = f()
+
+    if length(times)<=5 || k<3
+      cache.k = min(k+1, 3, kmax)
+    else
+      error_k1 = norm(cache.g[k] - cache.g[k-1]) * norm(error!(u_erro, cache.ϕ_np1[k], u_prev, u_next, atol, rtol))
+      error_k1 += norm(error!(u_erro, cache_v.ϕ_np1[k], v_prev, v_next, atol, rtol))
+      error_k1 /= sqrt(2)
+
+      error_k2 = norm(cache.g[k-1] - cache.g[k-2]) * norm(error!(u_erro, cache.ϕ_np1[k-1], u_prev, u_next, atol, rtol))
+      error_k2 += norm(error!(u_erro, cache_v.ϕ_np1[k-1], v_prev, v_next, atol, rtol))
+      error_k2 /= sqrt(2)
+
+      if max(error_k2, error_k1) <= cache.error_k
+        cache.k = k-1
+      else
+        ϕ_np1!(cache, cache.f_prev, k+2)
+        error_kstar = norm((times[end] - times[end-1]) * γstar[k+2]) * norm(error!(u_erro, cache.ϕ_np1[k+2], u_prev, u_next, atol, rtol))
+        error_kstar += norm(error!(u_erro, cache_v.ϕ_np1[k+2], v_prev, v_next, atol, rtol))
+        error_kstar /= sqrt(2)
+
+        if error_kstar < cache.error_k
+          cache.k = min(k+1, kmax)
+          cache.error_k = one(cache.error_k)   # constant dt
+        end
+      end
+    end
+    @. cache.u_prev = cache.u_next
+    cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1    
+  end
+end
+
+function extend!(cache::VCABMVolterraCache, times, normal_cache)
+  if normal_cache.error_k > one(normal_cache.error_k)
     return
   end
-  old_k = cache.k
-  cache.k = other_cache.k
 
-  @unpack f_prev, v_prev, v_next, k = cache
+  @. cache.v_prev = cache.v_next
+
+  # if other_cache.error_k > one(other_cache.error_k)
+  #   return
+  # end
+  # old_k = cache.k
+  # cache.k = other_cache.k
+
+  @unpack f_prev, v_prev, v_next, ϕ_np1, ϕstar_n = cache
   t = length(times) - 1 # `t` from the last iteration
 
-  foreach(f -> insert!(f.u, t, copy.(f[t])), f_prev)
+  # @. v_prev = v_next
+  # foreach(f -> insert!(f.u, t, copy.(f[t])), f_prev)
   insert!(v_prev.u, t, copy.(v_prev[t]))
   insert!(v_next.u, t, zero.(v_next[t]))
 
-  # Shift and update f_prev
-  for k′ in k:-1:2
-    @. f_prev[k′] = f_prev[k′-1]
-  end
-  for k′ in 2:k
-    for t′ in 1:t
-      f_prev[k′].u[t′] += calculate_integral(other_cache, times, s -> k_vert(t+1-k′, t′, s), old_k)
-    end
-    f_prev[k′].u[t+1] += calculate_integral(other_cache, times, s -> k_diag(t+1-k′, s), old_k)
-  end
+  _ϕstar_n = [zero.(v_prev[t]) for _ in eachindex(ϕstar_n)]
+  _ϕ_np1 = [zero.(v_prev[t]) for _ in eachindex(ϕ_np1)]
+  foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕstar_n, _ϕstar_n)
+  foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕ_np1, _ϕ_np1)
+
+  # # Shift and update f_prev
+  # for k′ in k:-1:2
+  #   @. f_prev[k′] = f_prev[k′-1]
+  # end
+  # for k′ in 1:(k-1)
+  #   for t′ in 1:t
+  #     f_prev[1+k′].u[t′] += calculate_integral(other_cache, times, s -> k_vert(t-k′, t′, s), old_k)
+  #   end
+  #   f_prev[1+k′].u[t+1] += calculate_integral(other_cache, times, s -> k_diag(t-k′, s), old_k)
+  # end
 end
 
-function calculate_integral(cache, times, kernel, k)
-  @unpack g = cache
+# function calculate_integral(cache::VCABMCache, times, kernel, k)
+#   @unpack g = cache
 
-  t = length(times) - 1
+#   t = length(times) - 1
 
-  δ(j, n=t-1) = j == 0 ? kernel(n) : (δ(j-1, n) - δ(j-1, n-1))/(times[n] - times[n-j])
+#   δ(j, n=t-1) = j == 0 ? kernel(n) : (δ(j-1, n) - δ(j-1, n-1))/(times[n] - times[n-j])
 
-  out = g[1] * δ(0)
-  for j in 1:min(k-1,1)
-    out += g[j+1] * δ(j) * prod(i -> (times[t] - times[t-i]), 1:j)
-  end
-  # out = 1/2 * (times[t+1] - times[t]) * (kernel(t+1) + kernel(t))
-  out
-end
+#   # out = g[1] * δ(0)
+#   # for j in 1:k-1
+#   #   out += g[j+1] * δ(j) * prod(i -> (times[t] - times[t-i]), 1:j)
+#   # end
+#   out = 1/2 * (times[t] - times[t-1]) * (kernel(t) + kernel(t-1))
+#   out
+# end
 
 # Section III.5: Eq (5.9-5.10)
 function ϕ_and_ϕstar!(cache, times, k)
