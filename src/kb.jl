@@ -43,13 +43,18 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
 
   state = KBState(u0, t0)
 
+  if !isnothing(k_vert)
+    t = length(state.t)
+    v = VectorOfArray([[x[t, t′] for x in state.u] for t′ in 1:t]) # FIX THIS
+    cache_v = VCABMVolterraCache{eltype(state.t)}(opts.kmax, v)
+  end
+
   function f(t)
     if isnothing(k_vert)
       return VectorOfArray([[f_vert(state.u, state.t, t, t′) for t′ in 1:(t - 1)]; [f_diag(state.u, state.t, t)]])
     else
-      # direct quadrature for the evaluation of the Volterra integrals
-      k(s) = VectorOfArray([[k_vert(state.u, state.t, t, t′, s) for t′ in 1:(t - 1)]; [k_diag(state.u, state.t, t, s)]])
-      v = trapezium(state.t, [k(s) for s in 1:t])
+      kernel(s) = VectorOfArray([[k_vert(state.u, state.t, t, t′, s) for t′ in 1:(t - 1)]; [k_diag(state.u, state.t, t, s)]])
+      v = quadrature!(cache_v, state.t, kernel)
       return VectorOfArray([[f_vert(state.u, v[t′], state.t, t, t′) for t′ in 1:(t - 1)]; [f_diag(state.u, v[t], state.t, t)]])
     end
   end
@@ -71,11 +76,10 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
 
     # Extend cache
     if isnothing(k_vert)
-      extend!(cache, (t, t′) -> f_vert(u0, state.t, t, t′), state.t)
+      extend!(cache, state.t, (t, t′) -> f_vert(state.u, state.t, t, t′))
     else
-      extend!(cache, (t, t′) -> (v = trapezium(state.t, [k_vert(state.u, state.t, t, t′, s) for s in 1:t]); f_vert(u0, v, state.t, t, t′)), state.t)
+      extend!(cache, cache_v, state.t, (v, t, t′) -> f_vert(state.u, v, state.t, t, t′), (t, t′, s) -> k_vert(state.u, state.t, t, t′, s))
     end
-    
 
     # Predictor
     u_next = predict!(cache, state.t)
