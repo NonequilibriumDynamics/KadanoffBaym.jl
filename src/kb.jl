@@ -43,26 +43,23 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
 
   state = KBState(u0, t0)
 
-  if !isnothing(k_vert)
+  cache = begin
     t = length(state.t)
-    v = VectorOfArray([[x[t, t′] for x in state.u] for t′ in 1:t]) # FIX THIS
-    cache_v = VCABMVolterraCache{eltype(state.t)}(opts.kmax, v)
-  end
+    u_prev = VectorOfArray([[x[t, t′] for x in state.u] for t′ in 1:t])
 
-  function f(t)
     if isnothing(k_vert)
-      return VectorOfArray([[f_vert(state.u, state.t, t, t′) for t′ in 1:(t - 1)]; [f_diag(state.u, state.t, t)]])
+      f = t -> VectorOfArray([[f_vert(state.u, state.t, t, t′) for t′ in 1:(t - 1)]; [f_diag(state.u, state.t, t)]])
     else
-      kernel(s) = VectorOfArray([[k_vert(state.u, state.t, t, t′, s) for t′ in 1:(t - 1)]; [k_diag(state.u, state.t, t, s)]])
-      v = quadrature!(cache_v, state.t, kernel)
-      return VectorOfArray([[f_vert(state.u, v[t′], state.t, t, t′) for t′ in 1:(t - 1)]; [f_diag(state.u, v[t], state.t, t)]])
-    end
-  end
+      k = (t, s) -> VectorOfArray([[k_vert(state.u, state.t, t, t′, s) for t′ in 1:(t - 1)]; [k_diag(state.u, state.t, t, s)]])
+      cache_v = VCABMVolterraCache{eltype(state.t)}(opts.kmax, k(t, t))
 
-  cache = let
-    t = length(state.t)
-    u = VectorOfArray([[x[t, t′] for x in state.u] for t′ in 1:t])
-    VCABMCache{eltype(state.t)}(opts.kmax, u, typeof(u)(f(t).u))
+      f = t -> begin
+        v = quadrature!(cache_v, state.t, s -> k(t, s))
+        VectorOfArray([[f_vert(state.u, v[t′], state.t, t, t′) for t′ in 1:(t - 1)]; [f_diag(state.u, v[t], state.t, t)]])
+      end
+    end
+
+    VCABMCache{eltype(state.t)}(opts.kmax, u_prev, typeof(u_prev)(f(t).u))
   end
 
   # All mutations to user arguments are done explicitely here
