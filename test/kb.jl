@@ -11,8 +11,8 @@
     return [0im * u[2][t, t], 0im * u[1][t, t]]
   end
 
-  G = GreenFunction(zeros(ComplexF64, 1, 1), Greater)
-  L = GreenFunction(1im * ones(ComplexF64, 1, 1), Lesser)
+  G = GreenFunction(zeros(ComplexF64, 1, 1), SkewHermitianSymmetry)
+  L = GreenFunction(1im * ones(ComplexF64, 1, 1), SkewHermitianSymmetry)
 
   kb = kbsolve(fv, fd, [G, L], (0.0, 100.0); atol=atol, rtol=rtol)
 
@@ -49,7 +49,7 @@ end
     return zeros(1)
   end
 
-  G = GreenFunction(ones(1, 1), Classical)
+  G = GreenFunction(ones(1, 1), SymmetricSymmetry)
 
   kb = kbsolve(fv, fd, [G], (0.0, 30.0); atol=atol, rtol=rtol, k_vert=kv, k_diag=kd)
 
@@ -75,7 +75,7 @@ end
     return [0im * u[1][t, t]]
   end
 
-  L = GreenFunction(-1im * ones(ComplexF64, 1, 1), Lesser)
+  L = GreenFunction(-1im * ones(ComplexF64, 1, 1), SkewHermitianSymmetry)
 
   kb = kbsolve(fv, fd, [L], (0.0, 200.0); atol=atol, rtol=rtol)
 
