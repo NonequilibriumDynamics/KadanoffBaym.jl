@@ -1,28 +1,3 @@
-"""
-  VCABMOptions(...)
-
-Returns a the parameters needed to control a VCABM integrator
-"""
-struct VCABMOptions
-  atol::Number
-  rtol::Number
-  dtini::Number
-  dtmax::Number
-  qmax::Number
-  qmin::Number
-  γ::Number
-  kmax::Number
-  stop::Function
-end
-
-function VCABMOptions(; atol=1e-8, rtol=1e-6, dtini=0.0, dtmax=Inf, qmax=5, qmin=1 // 5, γ=9 // 10, kmax=12, stop=() -> false)
-  if kmax < 1 || kmax > 12
-    error("kmax must be between 1 and 12")
-  end
-
-  return VCABMOptions(atol, rtol, dtini, dtmax, qmax, qmin, γ, kmax, stop)
-end
-
 # Part of the following code is licensed under the MIT "Expact" Lience, 
 # from https://github.com/SciML/OrdinaryDiffEq.jl
 mutable struct VCABMCache{T,U}
