@@ -97,16 +97,14 @@ end
 
 # Controls the step size & resizes the Green functions if required
 function timeloop!(state, cache, tmax, opts)
-  # Section II.4: Starting Step Size, Eq. (4.14)
   if isone(length(state.t))
+    # Section II.4: Starting Step Size, Eq. (4.14)
     dt = iszero(opts.dtini) ? initial_step(cache.f_prev, cache.u_prev, opts.atol, opts.rtol) : opts.dtini
   else
-    dt = state.t[end] - state.t[end - 1]
+    # Section II.4: Automatic Step Size Control, Eq. (4.13)
+    q = max(inv(opts.qmax), min(inv(opts.qmin), cache.error_k^(1 / (cache.k + 1)) / opts.γ))
+    dt = min((state.t[end] - state.t[end - 1]) / q, opts.dtmax)
   end
-
-  # Section II.4: Automatic Step Size Control, Eq. (4.13)
-  q = max(inv(opts.qmax), min(inv(opts.qmin), cache.error_k^(1 / (cache.k + 1)) / opts.γ))
-  dt = min(dt / q, opts.dtmax)
 
   # Remove the last element of the time grid if last step failed
   if cache.error_k > one(cache.error_k)
