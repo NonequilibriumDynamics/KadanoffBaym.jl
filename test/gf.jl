@@ -4,42 +4,42 @@ N = 10
   # Test 2d getindex setindex!
   data = zeros(ComplexF64, N, N)
 
-  lgf = GreenFunction(copy(data), Lesser)
-  ggf = GreenFunction(copy(data), Greater)
+  lgf = GreenFunction(copy(data), SkewHermitianSymmetry)
+  ggf = GreenFunction(copy(data), SkewHermitianSymmetry)
 
   v = 30 + 30im
-  lgf[2,N] = v
-  ggf[N,2] = v
+  lgf[2, N] = v
+  ggf[N, 2] = v
 
-  @test lgf.data[N,2,..] == -adjoint(v)
-  @test ggf.data[2,N,..] == -adjoint(v)
+  @test lgf.data[N, 2, ..] == -adjoint(v)
+  @test ggf.data[2, N, ..] == -adjoint(v)
 
-  @test lgf[2,N] == -adjoint(lgf.data[N,2])
-  @test ggf.data[2,N,..] == -adjoint(ggf[N,2])
+  @test lgf[2, N] == -adjoint(lgf.data[N, 2])
+  @test ggf.data[2, N, ..] == -adjoint(ggf[N, 2])
 end
 
 @testset "4D GF" begin
   # Test 4d getindex setindex!
   data = zeros(ComplexF64, N, N, N, N)
 
-  lgf = GreenFunction(copy(data), Lesser)
-  ggf = GreenFunction(copy(data), Greater)
+  lgf = GreenFunction(copy(data), SkewHermitianSymmetry)
+  ggf = GreenFunction(copy(data), SkewHermitianSymmetry)
 
   v = rand(ComplexF64, N, N)
-  lgf[2,N] = v
-  ggf[N,2] = v
+  lgf[2, N] = v
+  ggf[N, 2] = v
 
-  @test lgf.data[..,N,2] == -adjoint(v)
-  @test ggf.data[..,2,N] == -adjoint(v)
+  @test lgf.data[.., N, 2] == -adjoint(v)
+  @test ggf.data[.., 2, N] == -adjoint(v)
 
-  @test lgf[2,N] == -adjoint(lgf.data[..,N,2])
-  @test ggf.data[..,2,N] == -adjoint(ggf[N,2])
+  @test lgf[2, N] == -adjoint(lgf.data[.., N, 2])
+  @test ggf.data[.., 2, N] == -adjoint(ggf[N, 2])
 end
 
 @testset "Base functions & setindex!" begin
   # Test AbstractArray-like behaviour
   data = rand(ComplexF64, N, N, N, N)
-  gf = GreenFunction(copy(data), Lesser)
+  gf = GreenFunction(copy(data), SkewHermitianSymmetry)
 
   @test (-gf).data == (-data)
   @test (conj(gf)).data == conj(data)
@@ -49,28 +49,28 @@ end
 
 @testset "setindex!" begin
   function setindexA(A::AbstractArray)
-    for i=1:N, j=1:i
-      A[..,i,j] = b
+    for i in 1:N, j in 1:i
+      A[.., i, j] = b
       if j != i
-        A[..,j,i] = -adjoint(b)
+        A[.., j, i] = -adjoint(b)
       end
     end
   end
 
   function setindexG(G)
-    for i=1:N, j=1:i
-      G[i,j] = b
+    for i in 1:N, j in 1:i
+      G[i, j] = b
     end
   end
 
-  data = zeros(ComplexF64, N, N, N, N);
-  gf = GreenFunction(copy(data), Lesser);
+  data = zeros(ComplexF64, N, N, N, N)
+  gf = GreenFunction(copy(data), SkewHermitianSymmetry)
 
-  b = rand(ComplexF64,N,N)
+  b = rand(ComplexF64, N, N)
 
-  gf[1,2] = b
-  data[..,1,2] = b
-  data[..,2,1] = -adjoint(b)
+  gf[1, 2] = b
+  data[.., 1, 2] = b
+  data[.., 2, 1] = -adjoint(b)
   @test gf.data == data
 
   setindexA(data)

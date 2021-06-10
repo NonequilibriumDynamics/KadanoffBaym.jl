@@ -3,7 +3,6 @@ using EllipsisNotation
 using Test
 
 @testset "All tests" begin
-
   @testset "Green functions" begin
     include("gf.jl")
   end
