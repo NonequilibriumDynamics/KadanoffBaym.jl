@@ -6,7 +6,7 @@ using UnPack
 using Requires
 using RecursiveArrayTools
 
-export GreenFunction, SymmetricSymmetry, SkewHermitianSymmetry, OneTimeSymmetry
+export GreenFunction, Symmetrical, SkewHermitian, OneTime
 export kbsolve
 
 include("utils.jl")
