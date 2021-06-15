@@ -4,8 +4,8 @@ N = 10
   # Test 2d getindex setindex!
   data = zeros(ComplexF64, N, N)
 
-  lgf = GreenFunction(copy(data), SkewHermitianSymmetry)
-  ggf = GreenFunction(copy(data), SkewHermitianSymmetry)
+  lgf = GreenFunction(copy(data), SkewHermitian)
+  ggf = GreenFunction(copy(data), SkewHermitian)
 
   v = 30 + 30im
   lgf[2, N] = v
@@ -22,8 +22,8 @@ end
   # Test 4d getindex setindex!
   data = zeros(ComplexF64, N, N, N, N)
 
-  lgf = GreenFunction(copy(data), SkewHermitianSymmetry)
-  ggf = GreenFunction(copy(data), SkewHermitianSymmetry)
+  lgf = GreenFunction(copy(data), SkewHermitian)
+  ggf = GreenFunction(copy(data), SkewHermitian)
 
   v = rand(ComplexF64, N, N)
   lgf[2, N] = v
@@ -39,7 +39,7 @@ end
 @testset "Base functions & setindex!" begin
   # Test AbstractArray-like behaviour
   data = rand(ComplexF64, N, N, N, N)
-  gf = GreenFunction(copy(data), SkewHermitianSymmetry)
+  gf = GreenFunction(copy(data), SkewHermitian)
 
   @test (-gf).data == (-data)
   @test (conj(gf)).data == conj(data)
@@ -64,7 +64,7 @@ end
   end
 
   data = zeros(ComplexF64, N, N, N, N)
-  gf = GreenFunction(copy(data), SkewHermitianSymmetry)
+  gf = GreenFunction(copy(data), SkewHermitian)
 
   b = rand(ComplexF64, N, N)
 

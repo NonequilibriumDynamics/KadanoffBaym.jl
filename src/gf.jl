@@ -5,21 +5,21 @@ Defined as
 
     G(t,t') = G(t′,t)ᵀ
 """
-struct SymmetricSymmetry <: AbstractSymmetry end
+struct Symmetrical <: AbstractSymmetry end
 
 """
 Defined as
 
     G(t,t') = -G(t′,t)†
 """
-struct SkewHermitianSymmetry <: AbstractSymmetry end
+struct SkewHermitian <: AbstractSymmetry end
 
 """
 Defined as
 
     G(t) = G(t)
 """
-struct OneTimeSymmetry <: AbstractSymmetry end
+struct OneTime <: AbstractSymmetry end
 
 """
     GreenFunction(g::AbstractArray, s::AbstractSymmetry)
@@ -27,7 +27,7 @@ struct OneTimeSymmetry <: AbstractSymmetry end
 A container interface with array indexing respecting some symmetry `s`.
 
 # Notes
-When indexing with 2 indices `SymmetricSymmetry` or `SkewHermitianSymmetry` arrays,
+When indexing with 2 indices `Symmetrical` or `SkewHermitian` `GreenFunction`s,
 the last 2 dimensions will be indexed. These last 2 dimensions can be resized with [`resize!`](@ref).
 
 # Examples
@@ -35,7 +35,7 @@ the last 2 dimensions will be indexed. These last 2 dimensions can be resized wi
 julia> time_dim = 1
 julia> spin_dim = 2
 julia> data = zeros(spin_dim, spin_dim, 1, 1)
-julia> gf = GreenFunction(data, SkewHermitianSymmetry)
+julia> gf = GreenFunction(data, SkewHermitian)
 ```
 """
 mutable struct GreenFunction{T,N,A,U<:AbstractSymmetry} <: AbstractArray{T,N}
@@ -43,7 +43,7 @@ mutable struct GreenFunction{T,N,A,U<:AbstractSymmetry} <: AbstractArray{T,N}
 end
 
 function GreenFunction(G::AbstractArray, U::Type{<:AbstractSymmetry})
-  if U <: Union{SymmetricSymmetry,SkewHermitianSymmetry}
+  if U <: Union{Symmetrical,SkewHermitian}
     @assert ==(last2(size(G))...) "Time dimension ($(last2(size(G)))) must be a square"
   end
   return GreenFunction{eltype(G),ndims(G),typeof(G),U}(G)
@@ -57,11 +57,11 @@ end
 Base.copy(G::GreenFunction) = oftype(G, copy(G.data))
 Base.eltype(::GreenFunction{T}) where {T} = T
 
-@inline Base.getindex(::GreenFunction{T,S,<:Union{SymmetricSymmetry,SkewHermitianSymmetry}}, I) where {T,S} = error("Single indexing not allowed")
+@inline Base.getindex(::GreenFunction{T,S,<:Union{Symmetrical,SkewHermitian}}, I) where {T,S} = error("Single indexing not allowed")
 Base.@propagate_inbounds Base.getindex(G::GreenFunction, I...) = G.data[.., I...]
 
-@inline Base.setindex!(::GreenFunction{T,S,<:Union{SymmetricSymmetry,SkewHermitianSymmetry}}, v, I) where {T,S} = error("Single indexing not allowed")
-Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,SkewHermitianSymmetry}, v, I...) where {T,N,A}
+@inline Base.setindex!(::GreenFunction{T,S,<:Union{Symmetrical,SkewHermitian}}, v, I) where {T,S} = error("Single indexing not allowed")
+Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,SkewHermitian}, v, I...) where {T,N,A}
   ts = last2(I)
   jj = front2(I)
 
@@ -72,7 +72,7 @@ Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,SkewHerm
     G.data[.., jj..., reverse(ts)...] = -adjoint(v)
   end
 end
-Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,SymmetricSymmetry}, v, I...) where {T,N,A}
+Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,Symmetrical}, v, I...) where {T,N,A}
   ts = last2(I)
   jj = front2(I)
 
@@ -83,7 +83,7 @@ Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,Symmetri
     G.data[.., jj..., reverse(ts)...] = transpose(v)
   end
 end
-Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,OneTimeSymmetry}, v, I...) where {T,N,A}
+Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,OneTime}, v, I...) where {T,N,A}
   return G.data[.., I] = v
 end
 
