@@ -3,13 +3,13 @@
 
 Wigner-Ville transformation
 
-    W_x(ω, T) = i ∫dt x(T + t/2, T - t/2) e^{+i ω t}
+``x_W(ω, T) = i ∫dt x(T + t/2, T - t/2) e^{+i ω t}``
 
 or
 
-    W_x(τ, T) = x(T + t/2, T - t/2)
+``x_W(τ, T) = x(T + t/2, T - t/2)``
 
-of a 2-point function `x`. Returns a tuple of `W_x` and the corresponding
+of a 2-point function `x`. Returns a tuple of `x_W` and the corresponding
 axes (`ω, T`) or (`τ`, `T`), depending on the `fourier` keyword.
 
 The motivation for the Wigner transformation is that, given an autocorrelation
@@ -18,16 +18,19 @@ stationary processes, yet it is fully equivalent to the non-stationary
 autocorrelation function. Therefore, the Wigner (distribution) function tells 
 us, roughly, how the spectral density changes in time.
 
-### Keyword Arguments:
-  - `ts::AbstractVector`: Time grid for `x`. Defaults to a `UnitRange`
-  - `fourier::Bool`: Whether to Fourier transform. Defaults to `true`
+# Optional keyword parameters
+  - `ts::AbstractVector`: Time grid for `x`. Defaults to a `UnitRange`.
+  - `fourier::Bool`: Whether to Fourier transform. Defaults to `true`.
 
-## References:
-https://en.wikipedia.org/wiki/Wigner_distribution_function
+# Notes
+The algorithm only works when `ts` – and consequently `x` – is equidistant.
 
-http://tftb.nongnu.org
+# References
+<https://en.wikipedia.org/wiki/Wigner_distribution_function>
+
+<http://tftb.nongnu.org>
 """
-function wigner_transform(x::AbstractMatrix; ts=1:size(x,1), fourier=true)
+function wigner_transform(x::AbstractMatrix; ts=1:size(x, 1), fourier=true)
   LinearAlgebra.checksquare(x)
 
   Nt = size(x, 1)
@@ -38,31 +41,31 @@ function wigner_transform(x::AbstractMatrix; ts=1:size(x,1), fourier=true)
   # ts_equidistant = range(ts[1], stop=ts[end], length=length(ts))
   # tᵢ = searchsortedlast.(Ref(ts_equidistant), ts[T]) # map to an equidistant index
 
-  # Change of basis x(t1, t2) → x′(t1 - t2, (t1 + t2)/2)
-  x′ = zero(x)
+  # Change of basis x(t1, t2) → x_W(t1 - t2, (t1 + t2)/2)
+  x_W = zero(x)
 
-  for T ∈ 1:Nt
+  for T in 1:Nt
     # For a certain T ≡ (t1 + t2)/2, τ ≡ (t1 - t2) can be at most τ_max
-    τ_max = minimum([T-1, Nt-T, Nt÷2-1])
+    τ_max = minimum([T - 1, Nt - T, Nt ÷ 2 - 1])
 
-    τs = -τ_max:τ_max
-    is = 1 .+ rem.(Nt.+τs, Nt)
+    τs = (-τ_max):τ_max
+    is = 1 .+ rem.(Nt .+ τs, Nt)
 
-    for (i, τᵢ) ∈ zip(is, τs)
-      x′[i,T] = x[T+τᵢ,T-τᵢ]
+    for (i, τᵢ) in zip(is, τs)
+      x_W[i, T] = x[T + τᵢ, T - τᵢ]
     end
-    
+
     τ = Nt ÷ 2
-    if T <= Nt-τ && T >= τ+1
-      x′[τ+1,T] = 0.5 * (x[T+τ,T-τ] + x[T-τ,T+τ])
+    if T <= Nt - τ && T >= τ + 1
+      x_W[τ + 1, T] = 0.5 * (x[T + τ, T - τ] + x[T - τ, T + τ])
     end
   end
 
-  x′ = circshift(x′, (Nt ÷ 2, 0))
+  x_W = circshift(x_W, (Nt ÷ 2, 0))
   τs = ts - reverse(ts)
 
-  if !fourier 
-    return x′, (τs, ts)
+  if !fourier
+    return x_W, (τs, ts)
   else
     # Because the FFT calculates the transform as y_k = \sum_j e^{-2pi i j k/n}
     # from j=0 to j=n-1, we need to transform this into our time and frequency
@@ -71,14 +74,15 @@ function wigner_transform(x::AbstractMatrix; ts=1:size(x,1), fourier=true)
     ωs = fftfreq(Nt, -2pi / dτ)
     is = sortperm(ωs)
 
-    x′ = mapslices(x -> im * dτ * fft(x) .* exp.(1.0im * τs[1] .* ωs), x′, dims=1)
-    
-    return x′[is,:], (ωs[is], ts)
+    x_W = mapslices(x -> im * dτ * fft(x) .* exp.(1.0im * τs[1] .* ωs), x_W; dims=1)
+
+    return x_W[is, :], (ωs[is], ts)
   end
 end
 
+"""Interpolates `x` on an equidistant mesh with the same boundaries and length as `ts` and calls [`wigner_transform`](@ref)"""
 function wigner_transform_itp(x::AbstractMatrix, ts::Vector; fourier=true)
-  ts_lin = range(first(ts), last(ts), length=length(ts))
+  ts_lin = range(first(ts), last(ts); length=length(ts))
   itp = interpolate((ts, ts), x, Gridded(Linear()))
-  wigner_transform([itp(t1,t2) for t1 in ts_lin, t2 in ts_lin]; ts=ts_lin, fourier=fourier)
+  return wigner_transform([itp(t1, t2) for t1 in ts_lin, t2 in ts_lin]; ts=ts_lin, fourier=fourier)
 end

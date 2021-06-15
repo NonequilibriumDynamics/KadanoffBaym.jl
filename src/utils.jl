@@ -1,9 +1,9 @@
 # Error estimation and norm: Section II.4 Eq. (4.11)
-@inline function error!(out::AbstractArray, ũ::AbstractArray, u₀::AbstractArray, u₁::AbstractArray, atol::Real, rtol::Real)
+@inline function error!(out::AbstractArray, ũ::AbstractArray, u₀::AbstractArray, u₁::AbstractArray, atol, rtol)
   @. out = error!(out, ũ, u₀, u₁, atol, rtol)
   return out
 end
-@inline function error!(out::AbstractArray{<:Number}, ũ::AbstractArray{<:Number}, u₀::AbstractArray{<:Number}, u₁::AbstractArray{<:Number}, atol::Real, rtol::Real)
+@inline function error!(out::AbstractArray{<:Number}, ũ::AbstractArray{<:Number}, u₀::AbstractArray{<:Number}, u₁::AbstractArray{<:Number}, atol, rtol)
   @. out = error_estimate(ũ, u₀, u₁, atol, rtol)
   return out
 end
