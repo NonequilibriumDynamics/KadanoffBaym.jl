@@ -52,53 +52,59 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
   # Holds the information about the integration
   state = KBState(u0, t0)
 
-  # Holds the information necessary to time-step
-  cache = begin
+  # Holds the information necessary to integrate
+  caches = begin
     t = length(state.t)
     u_prev = VectorOfArray([[x[t, t′] for x in state.u] for t′ in 1:t])
 
+    # The system is viewed as 1-time ODE whose rhs is the concatenation of all rhs up to time the index `t`
     if isnothing(k_vert)
-      # The system is viewed as 1-time ODE whose rhs is the concatenation of all rhs up to time the index `t`
+      cache_v = nothing
+
       f = t -> VectorOfArray([[f_vert(state.u, state.t, t, t′) for t′ in 1:(t - 1)]; [f_diag(state.u, state.t, t)]])
     else
-      # The same is done for the Volterra kernels
-      k = (t, s) -> VectorOfArray([[k_vert(state.u, state.t, t, t′, s) for t′ in 1:(t - 1)]; [k_diag(state.u, state.t, t, s)]])
-
-      # Holds the information necessary to integrate Volterra kernels
       cache_v = VCABMVolterraCache{eltype(state.t)}(kmax, typeof(u_prev)(k(t, t).u))
 
+      k = (t, s) -> VectorOfArray([[k_vert(state.u, state.t, t, t′, s) for t′ in 1:(t - 1)]; [k_diag(state.u, state.t, t, s)]])
+
       f = t -> begin
-        # Integrates the Volterra kernels v(t) = ₀∫ᵗ ds K(t, s)
         v = quadrature!(cache_v, state.t, s -> k(t, s))
         VectorOfArray([[f_vert(state.u, v[t′], state.t, t, t′) for t′ in 1:(t - 1)]; [f_diag(state.u, v[t], state.t, t)]])
       end
     end
 
-    VCABMCache{eltype(state.t)}(kmax, u_prev, typeof(u_prev)(f(t).u))
+    VCABMCache{eltype(state.t)}(kmax, u_prev, typeof(u_prev)(f(t).u)), cache_v
   end
 
-  while timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ, stop)
+  while timeloop!(state, caches[1], tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ, stop)
     t = length(state.t)
 
-    # Extend the cache to accomodate the new time column
-    if isnothing(k_vert)
-      extend!(cache, state.t, (t, t′) -> f_vert(state.u, state.t, t, t′))
-    else
-      extend!(cache, cache_v, state.t, (v, t, t′) -> f_vert(state.u, v, state.t, t, t′), (t, t′, s) -> k_vert(state.u, state.t, t, t′, s))
-    end
+    # Extend the caches to accomodate the new time column
+    extend!(caches, state.t, (t, t′) -> begin
+      if isnothing(k_vert)
+        f_vert(state.u, state.t, t, t′)
+      else
+        kernel(s) = k_vert(state.u, state.t, t, t′, s)
+        local_cache = VCABMVolterraCache{eltype(state.t)}(kmax, kernel(1))
+        local_cache.gs = cache_v.gs
+        local_cache.ks = cache_v.ks
+        v = quadrature!(local_cache, view(state.t, 1:t), kernel)
+        f_vert(state.u, state.t, v, t, t′)
+      end
+    end)
 
     # Predictor
-    u_next = predict!(cache, state.t)
+    u_next = predict!(caches[1], state.t)
     foreach((u, u′) -> foreach(t′ -> u[t, t′] = u′[t′], 1:t), state.u, eachrow(u_next))
     foreach(t′ -> callback(state.t, t, t′), 1:t)
 
     # Corrector
-    u_next = correct!(cache, () -> f(t))
+    u_next = correct!(caches[1], () -> f(t))
     foreach((u, u′) -> foreach(t′ -> u[t, t′] = u′[t′], 1:t), state.u, eachrow(u_next))
     foreach(t′ -> callback(state.t, t, t′), 1:t)
 
     # Calculate error and adjust order
-    adjust!(cache, state.t, () -> f(t), kmax, atol, rtol)
+    adjust!(caches[1], state.t, () -> f(t), kmax, atol, rtol)
   end # timeloop!
   return state
 end
@@ -114,7 +120,7 @@ function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ,
     dt = min((state.t[end] - state.t[end - 1]) / q, dtmax)
   end
 
-  # Remove the last element of the time grid if last step failed
+  # Remove the last element of the time-grid if last step failed
   if cache.error_k > one(cache.error_k)
     pop!(state.t)
   end
@@ -129,7 +135,7 @@ function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ,
     foreach(u -> resize!(u, length(state.t)), state.u) # trim solution
     return false
   else
-    if length(state.t) == (last ∘ size ∘ first)(state.u) # resize solution
+    if length(state.t) == (last ∘ size ∘ last)(state.u) # resize solution
       foreach(u -> resize!(u, length(state.t) + min(50, ceil(Int, (tmax - state.t[end]) / dt))), state.u)
     end
     push!(state.t, last(state.t) + dt)
@@ -139,5 +145,5 @@ end
 
 struct KBState{U,T}
   u::U          # 2-point functions
-  t::Vector{T}  # time grid
+  t::Vector{T}  # time-grid
 end

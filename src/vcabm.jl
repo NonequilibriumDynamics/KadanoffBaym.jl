@@ -130,32 +130,22 @@ function extend!(cache::VCABMCache, times, f_vert)
   end
 end
 
-function extend!(cache::VCABMCache, cache_v::VCABMVolterraCache, times, f_vert, k_vert)
-  f(t, t′) = begin
-    kernel(s) = k_vert(t, t′, s)
-    local_cache = VCABMVolterraCache{eltype(times)}(length(cache.g) - 1, kernel(1))
-    local_cache.gs = cache_v.gs
-    local_cache.ks = cache_v.ks
-    v = quadrature!(local_cache, view(times, 1:t), kernel)
-    #v = trapezium(times, [k_vert(t, t′, s) for s in 1:t])
-    f_vert(v, t, t′)
-  end
+function extend!(caches, times, f_vert)
+  extend!(caches[1], times, f_vert)
 
-  extend!(cache, times, f)
-
-  if cache.error_k > one(cache.error_k)
+  if caches[1].error_k > one(caches[1].error_k) || isnothing(caches[2])
     return
   end
 
   @inbounds begin
-    cache.g = copy(cache.g)    # NOTE: unsafe trick. Create a new g and
-    push!(cache_v.gs, cache.g) # last element of gs now points to the new g
-    push!(cache_v.ks, cache.k)
+    caches[1].g = copy(caches[1].g)    # NOTE: unsafe trick. Create a new g and
+    push!(caches[2].gs, caches[1].g) # last element of gs now points to the new g
+    push!(caches[2].ks, caches[1].k)
 
-    foreach(ϕ -> push!(ϕ.u, zero.(cache.f_prev[end])), cache_v.ϕ_n)
-    foreach(ϕ -> push!(ϕ.u, zero.(cache.f_prev[end])), cache_v.ϕ_np1)
-    foreach(ϕ -> push!(ϕ.u, zero.(cache.f_prev[end])), cache_v.ϕstar_n)
-    foreach(ϕ -> push!(ϕ.u, zero.(cache.f_prev[end])), cache_v.ϕstar_nm1)
+    foreach(ϕ -> push!(ϕ.u, zero.(caches[1].f_prev[end])), caches[2].ϕ_n)
+    foreach(ϕ -> push!(ϕ.u, zero.(caches[1].f_prev[end])), caches[2].ϕ_np1)
+    foreach(ϕ -> push!(ϕ.u, zero.(caches[1].f_prev[end])), caches[2].ϕstar_n)
+    foreach(ϕ -> push!(ϕ.u, zero.(caches[1].f_prev[end])), caches[2].ϕstar_nm1)
   end
 end
 
