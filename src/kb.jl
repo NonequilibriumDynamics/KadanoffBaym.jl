@@ -53,54 +53,32 @@ function kbsolve(f_vert, f_diag, u0::Vector{<:GreenFunction}, (t0, tmax);
   state = KBState(u0, t0)
 
   # Holds the information necessary to integrate
-  caches = begin
+  caches = let
     t = length(state.t)
-    u_prev = VectorOfArray([[x[t, t′] for x in state.u] for t′ in 1:t])
-
-    # The system is viewed as 1-time ODE whose rhs is the concatenation of all rhs up to time the index `t`
-    if isnothing(k_vert)
-      cache_v = nothing
-
-      f = t -> VectorOfArray([[f_vert(state.u, state.t, t, t′) for t′ in 1:(t - 1)]; [f_diag(state.u, state.t, t)]])
-    else
-      cache_v = VCABMVolterraCache{eltype(state.t)}(kmax, typeof(u_prev)(k(t, t).u))
-
-      k = (t, s) -> VectorOfArray([[k_vert(state.u, state.t, t, t′, s) for t′ in 1:(t - 1)]; [k_diag(state.u, state.t, t, s)]])
-
-      f = t -> begin
-        v = quadrature!(cache_v, state.t, s -> k(t, s))
-        VectorOfArray([[f_vert(state.u, v[t′], state.t, t, t′) for t′ in 1:(t - 1)]; [f_diag(state.u, v[t], state.t, t)]])
-      end
-    end
-
-    VCABMCache{eltype(state.t)}(kmax, u_prev, typeof(u_prev)(f(t).u)), cache_v
+    VCABMCache{eltype(state.t)}(kmax, VectorOfArray([u[t, 1:t] for u in state.u])), nothing
   end
+
+  function f(t)
+    out = VectorOfArray([[f_vert(state.u, state.t, t, t′) for t′ in 1:(t - 1)]; [f_diag(state.u, state.t, t)]])
+    return VectorOfArray([collect(x) for x in eachrow(out)])
+  end
+
+  caches[1].f_prev .= f(1)
 
   while timeloop!(state, caches[1], tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ, stop)
     t = length(state.t)
 
     # Extend the caches to accomodate the new time column
-    extend!(caches, state.t, (t, t′) -> begin
-      if isnothing(k_vert)
-        f_vert(state.u, state.t, t, t′)
-      else
-        kernel(s) = k_vert(state.u, state.t, t, t′, s)
-        local_cache = VCABMVolterraCache{eltype(state.t)}(kmax, kernel(1))
-        local_cache.gs = cache_v.gs
-        local_cache.ks = cache_v.ks
-        v = quadrature!(local_cache, view(state.t, 1:t), kernel)
-        f_vert(state.u, state.t, v, t, t′)
-      end
-    end)
+    extend!(caches, state.t, (t, t′) -> f_vert(state.u, state.t, t, t′))
 
     # Predictor
     u_next = predict!(caches[1], state.t)
-    foreach((u, u′) -> foreach(t′ -> u[t, t′] = u′[t′], 1:t), state.u, eachrow(u_next))
+    foreach((u, u′) -> foreach(t′ -> u[t, t′] = u′[t′], 1:t), state.u, u_next.u)
     foreach(t′ -> callback(state.t, t, t′), 1:t)
 
     # Corrector
     u_next = correct!(caches[1], () -> f(t))
-    foreach((u, u′) -> foreach(t′ -> u[t, t′] = u′[t′], 1:t), state.u, eachrow(u_next))
+    foreach((u, u′) -> foreach(t′ -> u[t, t′] = u′[t′], 1:t), state.u, u_next.u)
     foreach(t′ -> callback(state.t, t, t′), 1:t)
 
     # Calculate error and adjust order

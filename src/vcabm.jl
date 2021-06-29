@@ -4,7 +4,9 @@ mutable struct VCABMCache{T,U}
   u_prev::U
   u_next::U
   u_erro::U
+
   f_prev::U
+  f_next::U
 
   ϕ_n::Vector{U}
   ϕ_np1::Vector{U}
@@ -16,9 +18,9 @@ mutable struct VCABMCache{T,U}
   k::Int
   error_k::T
 
-  function VCABMCache{T}(kmax, u_prev::U, f_prev::U) where {T,U}
-    return new{T,typeof(u_prev)}(u_prev, zero.(u_prev), zero.(u_prev), f_prev, [zero.(f_prev) for _ in 1:(kmax + 1)],
-                                 [zero.(f_prev) for _ in 1:(kmax + 2)], [zero.(f_prev) for _ in 1:(kmax + 1)], [zero.(f_prev) for _ in 1:(kmax + 1)],
+  function VCABMCache{T}(kmax, u_prev::U) where {T,U}
+    return new{T,typeof(u_prev)}(u_prev, zero.(u_prev), zero.(u_prev), zero.(u_prev), zero.(u_prev), [zero.(u_prev) for _ in 1:(kmax + 1)],
+                                 [zero.(u_prev) for _ in 1:(kmax + 2)], [zero.(u_prev) for _ in 1:(kmax + 1)], [zero.(u_prev) for _ in 1:(kmax + 1)],
                                  zeros(T, kmax + 1, kmax + 1), zeros(T, kmax + 1), 1, zero(T))
   end
 end
@@ -108,25 +110,30 @@ function extend!(cache::VCABMCache, times, f_vert)
       return
     end
 
-    insert!(f_prev.u, t, f_vert(t, t))
-    insert!(u_prev.u, t, copy.(u_prev[t]))
-    insert!(u_next.u, t, zero.(u_prev[t]))
-    insert!(u_erro.u, t, zero.(u_erro[t]))
+    f_ = f_vert(t, t)
+    for i in eachindex(u_prev.u)
+      insert!(f_prev.u[i], t, f_[i])
+      insert!(u_prev.u[i], t, copy(u_prev.u[i][t]))
+      insert!(u_next.u[i], t, zero(u_prev.u[i][t]))
+      insert!(u_erro.u[i], t, zero(u_prev.u[i][t]))
+    end
 
-    _ϕ_n = [zero.(f_prev[t]) for _ in eachindex(ϕ_n)]
-    _ϕ_np1 = [zero.(f_prev[t]) for _ in eachindex(ϕ_np1)]
-    _ϕstar_n = [zero.(f_prev[t]) for _ in eachindex(ϕstar_n)]
-    _ϕstar_nm1 = [zero.(f_prev[t]) for _ in eachindex(ϕstar_nm1)]
+    _ϕ_n = [zero.(f_) for _ in eachindex(ϕ_n)]
+    _ϕ_np1 = [zero.(f_) for _ in eachindex(ϕ_np1)]
+    _ϕstar_n = [zero.(f_) for _ in eachindex(ϕstar_n)]
+    _ϕstar_nm1 = [zero.(f_) for _ in eachindex(ϕstar_nm1)]
 
     for k′ in 1:k
       ϕ_and_ϕstar!((f_prev=f_vert(max(1, t - 1 - k + k′), t), ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
       _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
     end
 
-    foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕ_n, _ϕ_n)
-    foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕ_np1, _ϕ_np1)
-    foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕstar_n, _ϕstar_n)
-    foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕstar_nm1, _ϕstar_nm1)
+    for i in eachindex(f_prev.u)
+      foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕ_n, _ϕ_n)
+      foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕ_np1, _ϕ_np1)
+      foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕstar_n, _ϕstar_n)
+      foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕstar_nm1, _ϕstar_nm1)
+    end
   end
 end
 
