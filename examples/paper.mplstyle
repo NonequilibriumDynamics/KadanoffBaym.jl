@@ -1,0 +1,21 @@
+text.usetex : True
+
+font.family : serif
+font.size : 16
+
+axes.labelsize : 16
+
+xtick.major.size : 8
+ytick.major.size : 8
+
+xtick.minor.size : 4
+xtick.minor.visible : True
+
+ytick.minor.size : 4
+ytick.minor.visible : True
+
+xtick.top : True
+xtick.direction : inout
+
+ytick.right : True
+ytick.direction : inout
