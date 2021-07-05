@@ -78,7 +78,7 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
       return
     end
 
-    cache.f_prev = f()
+    cache.f_prev .= f()
 
     if length(times) <= 5 || k < 3
       cache.k = min(k + 1, 3, kmax)
@@ -102,7 +102,7 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
 end
 
 function extend!(cache::VCABMCache, times, f_vert)
-  @unpack f_prev, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, k = cache
+  @unpack f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, k = cache
   @inbounds begin
     t = length(times) - 1 # `t` from the last iteration
 
@@ -110,9 +110,11 @@ function extend!(cache::VCABMCache, times, f_vert)
       return
     end
 
-    f_ = f_vert(t, t)
+    f_vert(t, t)
+    f_ = cache.f_next[t,:]
     for i in eachindex(u_prev.u)
       insert!(f_prev.u[i], t, f_[i])
+      insert!(f_next.u[i], t, zero(f_[i]))
       insert!(u_prev.u[i], t, copy(u_prev.u[i][t]))
       insert!(u_next.u[i], t, zero(u_prev.u[i][t]))
       insert!(u_erro.u[i], t, zero(u_prev.u[i][t]))
@@ -124,7 +126,8 @@ function extend!(cache::VCABMCache, times, f_vert)
     _ϕstar_nm1 = [zero.(f_) for _ in eachindex(ϕstar_nm1)]
 
     for k′ in 1:k
-      ϕ_and_ϕstar!((f_prev=f_vert(max(1, t - 1 - k + k′), t), ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
+      f_vert(max(1, t - 1 - k + k′), t)
+      ϕ_and_ϕstar!((f_prev=cache.f_next[t,:], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
       _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
     end
 
