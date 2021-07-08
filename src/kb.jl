@@ -56,7 +56,7 @@ function kbsolve!(f_vert!, f_diag!, u0::Vector{<:GreenFunction}, (t0, tmax);
   # Holds the information necessary to integrate
   cache = let
     t = length(state.t)
-    VCABMCache{eltype(state.t)}(kmax, VectorOfArray([u[t, 1:t] for u in state.u]))
+    VCABMCache{eltype(state.t)}(kmax, VectorOfArray([[u[t, t′] for t′ in 1:t] for u in state.u]))
   end
 
   # The rhs is seen as a univariate problem
