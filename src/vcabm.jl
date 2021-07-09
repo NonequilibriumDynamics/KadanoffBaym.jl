@@ -111,7 +111,7 @@ function extend!(cache::VCABMCache, times, f_vert!)
     end
 
     f_vert!(t, t)
-    f_ = cache.f_next[t,:]
+    f_ = cache.f_next[t, :]
     for i in eachindex(u_prev.u)
       insert!(f_prev.u[i], t, copy(f_[i]))
       insert!(f_next.u[i], t, zero(f_[i]))
@@ -127,7 +127,7 @@ function extend!(cache::VCABMCache, times, f_vert!)
 
     for k′ in 1:k
       f_vert!(max(1, t - 1 - k + k′), t)
-      ϕ_and_ϕstar!((f_prev=cache.f_next[t,:], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
+      ϕ_and_ϕstar!((f_prev=cache.f_next[t, :], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
       _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
     end
 
@@ -151,22 +151,16 @@ function extend!(caches, times, f_vert)
     caches[1].g = copy(caches[1].g)    # NOTE: unsafe trick. Create a new g and
     push!(caches[2].gs, caches[1].g) # last element of gs now points to the new g
     push!(caches[2].ks, caches[1].k)
-
-    foreach(ϕ -> push!(ϕ.u, zero.(caches[1].f_prev[end])), caches[2].ϕ_n)
-    foreach(ϕ -> push!(ϕ.u, zero.(caches[1].f_prev[end])), caches[2].ϕ_np1)
-    foreach(ϕ -> push!(ϕ.u, zero.(caches[1].f_prev[end])), caches[2].ϕstar_n)
-    foreach(ϕ -> push!(ϕ.u, zero.(caches[1].f_prev[end])), caches[2].ϕstar_nm1)
   end
 end
 
-function quadrature!(cache::VCABMVolterraCache, times, kernel)
+function quadrature!(cache::VCABMVolterraCache, times, kernel!, boundary)
   @inbounds begin
-    t = length(times)
+    # result gets stored in f_prev
+    kernel!(1)
 
-    cache.f_prev = kernel(1)
     v_next = zero.(cache.f_prev)
-
-    for l in 2:t
+    for l in 2:boundary
       g = cache.gs[l]
       k = cache.ks[l]
 
@@ -177,7 +171,7 @@ function quadrature!(cache::VCABMVolterraCache, times, kernel)
       end
 
       # correct
-      cache.f_prev = kernel(l)
+      kernel!(l) # result gets stored in f_prev
       ϕ_np1!(cache, cache.f_prev, k)
       @. v_next = muladd(g[k], cache.ϕ_np1[k], v_next)
 

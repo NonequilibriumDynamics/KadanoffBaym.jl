@@ -1,23 +1,25 @@
 """
-    kbsolve!(f_vert!, f_diag!, u0, (t0, tmax); ...)
+    kbsolve!(fv!, fh!, u0, (t0, tmax); ...)
 
 Solves the 2-time Voltera integro-differential equation
 
-``du/dt1 = f(u,t1,t2) + ∫dτ K[u,t1,t2,τ]``
+``du/dt1 = f(u,t1,t2) + ∫₀ᵗ¹dτ K₁[u,t1,t2,τ] + ∫₀ᵗ²dτ K₂[u,t1,t2,τ]``
 
-``du/dt2 = f'(u,t1,t2) + ∫dτ K'[u,t1,t2,τ]``
+``du/dt2 = f'(u,t1,t2) + ∫₀ᵗ¹dτ K₁'[u,t1,t2,τ] + ∫₀ᵗ²dτ K₂'[u,t1,t2,τ]``
 
 for some initial condition `u0` from `t0` to `tmax`.
 
 # Parameters
-  - `f_vert!(out, ts, t1, t2)`: the rhs of `du/dt1`
-  - `f_diag!(out, ts, t1)`: the rhs of `du/dt1 + du/dt2` at `t1 = t2`
+  - `fv!(out, ts, t1, t2)`: the rhs of `du/dt1`
+  - `fh!(out, ts, t1, t2)`: the rhs of `du/dt2`
   - `u0::Vector{<:GreenFunction}`: initial condition for the 2-point functions
   - `(t0, tmax)`: the initial time(s) – can be a vector – and final time
 
 # Optional keyword parameters
-  - `k_vert(out, ts, t1, t2, τ)`: the integral kernel of `du/dt1`
-  - `k_diag(out, ts, t1, τ)`: the integral kernel of `du/dt1 + du/dt2` at `t1 = t2`
+  - `kv1!(out, ts, t1, t2, τ)`: the first integral kernel of `du/dt1`
+  - `kv2!(out, ts, t1, t2, τ)`: the second integral kernel of `du/dt1`
+  - `kh1!(out, ts, t1, t2, τ)`: the first integral kernel of `du/dt2`
+  - `kh2!(out, ts, t1, t2, τ)`: the second integral kernel of `du/dt2`
   - `callback(ts, t1, t2)`: A function that gets called everytime the 2-point function at the indices (t1, t2) is updated
   - `stop(ts)`: A function that gets called at every step that when evaluates to `true` stops the integration
 
@@ -38,9 +40,10 @@ for some initial condition `u0` from `t0` to `tmax`.
     presented in Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
     Solving Ordinary Differential Equations I: Nonstiff Problems
 """
-function kbsolve!(f_vert!, f_diag!, u0::Vector{<:GreenFunction}, (t0, tmax); 
-  k_vert=nothing, k_diag=nothing, callback=(x...) -> nothing, stop=(x...) -> false,
-  atol=1e-8, rtol=1e-6, dtini=0.0, dtmax=Inf, qmax=5, qmin=1 // 5, γ=9 // 10, kmax=12)
+function kbsolve!(fv!, fh!, u0::Vector{<:GreenFunction}, (t0, tmax); 
+                  (kv1!)=nothing, (kv2!)=nothing, (kh1!)=nothing, (kh2!)=nothing,
+                  callback=(x...) -> nothing, stop=(x...) -> false, 
+                  atol=1e-8, rtol=1e-6, dtini=0.0, dtmax=Inf, qmax=5, qmin=1 // 5, γ=9 // 10, kmax=12)
 
   # Support for an initial time-grid
   if isempty(size(t0))
@@ -59,10 +62,22 @@ function kbsolve!(f_vert!, f_diag!, u0::Vector{<:GreenFunction}, (t0, tmax);
     VCABMCache{eltype(state.t)}(kmax, VectorOfArray([[u[t, t′] for t′ in 1:t] for u in state.u]))
   end
 
+  cache_v = VCABMVolterraCache{eltype(state.t)}(kmax, cache.f_next[1, :])
+
   # The rhs is seen as a univariate problem
+  function evaluate(f!, t, t′, k1!, k2!, out)
+    if isnothing(k1!) && isnothing(k2!)
+      f!(out, state.t, t, t′)
+    else
+      v1 = isnothing(k1!) ? nothing : quadrature!(cache_v, state.t, s -> k1!(cache_v.f_prev, state.t, t, t′, s), t)
+      v2 = isnothing(k2!) ? nothing : quadrature!(cache_v, state.t, s -> k2!(cache_v.f_prev, state.t, t, t′, s), t′)
+      f!(out, v1, v2, state.t, t, t′)
+    end
+    return out
+  end
   function f!(t)
-    foreach(t′ -> f_vert!(view(cache.f_next, t′, :), state.t, t, t′), 1:(t - 1))
-    f_diag!(view(cache.f_next, t, :), state.t, t)
+    foreach(t′ -> evaluate(fv!, t, t′, kv1!, kv2!, view(cache.f_next, t′, :)), 1:t)
+    cache.f_next[t, :] .+= evaluate(fh!, t, t, kh1!, kh2!, copy(cache.f_next[t, :]))
     return cache.f_next
   end
 
@@ -72,7 +87,8 @@ function kbsolve!(f_vert!, f_diag!, u0::Vector{<:GreenFunction}, (t0, tmax);
     t = length(state.t)
 
     # Extend the caches to accomodate the new time column
-    extend!(cache, state.t, (t, t′) -> f_vert!(view(cache.f_next, t′, :), state.t, t, t′))
+    # TODO: extend with horizontal function (important for open systems)
+    extend!((cache, cache_v), state.t, (t, t′) -> evaluate(fv!, t, t′, kv1!, kv2!, view(cache.f_next, t′, :)))
 
     # Predictor
     u_next = predict!(cache, state.t)
