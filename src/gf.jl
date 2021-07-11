@@ -49,6 +49,9 @@ function GreenFunction(G::AbstractArray, U::Type{<:AbstractSymmetry})
   return GreenFunction{eltype(G),ndims(G),typeof(G),U}(G)
 end
 
+@inline symmetry(::GreenFunction{T,N,A,Symmetrical}) where {T,N,A} = transpose
+@inline symmetry(::GreenFunction{T,N,A,SkewHermitian}) where {T,N,A} = (-) ∘ adjoint
+
 @inline Base.size(G::GreenFunction, I...) = size(G.data, I...)
 @inline Base.length(G::GreenFunction) = length(G.data)
 @inline Base.ndims(G::GreenFunction) = ndims(G.data)
@@ -57,11 +60,11 @@ end
 Base.copy(G::GreenFunction) = oftype(G, copy(G.data))
 Base.eltype(::GreenFunction{T}) where {T} = T
 
-@inline Base.getindex(::GreenFunction{T,S,<:Union{Symmetrical,SkewHermitian}}, I) where {T,S} = error("Single indexing not allowed")
+@inline Base.getindex(::GreenFunction{T,N,A,<:Union{Symmetrical,SkewHermitian}}, I) where {T,N,A} = error("Single indexing not allowed")
 Base.@propagate_inbounds Base.getindex(G::GreenFunction, I...) = G.data[.., I...]
 
-@inline Base.setindex!(::GreenFunction{T,S,<:Union{Symmetrical,SkewHermitian}}, v, I) where {T,S} = error("Single indexing not allowed")
-Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,SkewHermitian}, v, I...) where {T,N,A}
+@inline Base.setindex!(::GreenFunction{T,N,A,<:Union{Symmetrical,SkewHermitian}}, v, I) where {T,N,A} = error("Single indexing not allowed")
+Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,U}, v, I...) where {T,N,A,U}
   ts = last2(I)
   jj = front2(I)
 
@@ -69,18 +72,7 @@ Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,SkewHerm
     G.data[.., jj..., ts...] = v
   else
     G.data[.., jj..., ts...] = v
-    G.data[.., jj..., reverse(ts)...] = -adjoint(v)
-  end
-end
-Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,Symmetrical}, v, I...) where {T,N,A}
-  ts = last2(I)
-  jj = front2(I)
-
-  if ==(ts...)
-    G.data[.., jj..., ts...] = v
-  else
-    G.data[.., jj..., ts...] = v
-    G.data[.., jj..., reverse(ts)...] = transpose(v)
+    G.data[.., jj..., reverse(ts)...] = symmetry(G)(v)
   end
 end
 Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,OneTime}, v, I...) where {T,N,A}
