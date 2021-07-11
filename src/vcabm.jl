@@ -4,7 +4,9 @@ mutable struct VCABMCache{T,U}
   u_prev::U
   u_next::U
   u_erro::U
+
   f_prev::U
+  f_next::U
 
   ϕ_n::Vector{U}
   ϕ_np1::Vector{U}
@@ -16,9 +18,9 @@ mutable struct VCABMCache{T,U}
   k::Int
   error_k::T
 
-  function VCABMCache{T}(kmax, u_prev::U, f_prev::U) where {T,U}
-    return new{T,typeof(u_prev)}(u_prev, zero.(u_prev), zero.(u_prev), f_prev, [zero.(f_prev) for _ in 1:(kmax + 1)],
-                                 [zero.(f_prev) for _ in 1:(kmax + 2)], [zero.(f_prev) for _ in 1:(kmax + 1)], [zero.(f_prev) for _ in 1:(kmax + 1)],
+  function VCABMCache{T}(kmax, u_prev::U) where {T,U}
+    return new{T,typeof(u_prev)}(u_prev, zero.(u_prev), zero.(u_prev), zero.(u_prev), zero.(u_prev), [zero.(u_prev) for _ in 1:(kmax + 1)],
+                                 [zero.(u_prev) for _ in 1:(kmax + 2)], [zero.(u_prev) for _ in 1:(kmax + 1)], [zero.(u_prev) for _ in 1:(kmax + 1)],
                                  zeros(T, kmax + 1, kmax + 1), zeros(T, kmax + 1), 1, zero(T))
   end
 end
@@ -76,7 +78,7 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
       return
     end
 
-    cache.f_prev = f()
+    cache.f_prev .= f()
 
     if length(times) <= 5 || k < 3
       cache.k = min(k + 1, 3, kmax)
@@ -99,8 +101,8 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
   end
 end
 
-function extend!(cache::VCABMCache, times, f_vert)
-  @unpack f_prev, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, k = cache
+function extend!(cache::VCABMCache, times, f_vert!)
+  @unpack f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, k = cache
   @inbounds begin
     t = length(times) - 1 # `t` from the last iteration
 
@@ -108,65 +110,57 @@ function extend!(cache::VCABMCache, times, f_vert)
       return
     end
 
-    insert!(f_prev.u, t, f_vert(t, t))
-    insert!(u_prev.u, t, copy.(u_prev[t]))
-    insert!(u_next.u, t, zero.(u_prev[t]))
-    insert!(u_erro.u, t, zero.(u_erro[t]))
+    f_vert!(t, t)
+    f_ = cache.f_next[t, :]
+    for i in eachindex(u_prev.u)
+      insert!(f_prev.u[i], t, copy(f_[i]))
+      insert!(f_next.u[i], t, zero(f_[i]))
+      insert!(u_prev.u[i], t, copy(u_prev.u[i][t]))
+      insert!(u_next.u[i], t, zero(u_prev.u[i][t]))
+      insert!(u_erro.u[i], t, zero(u_prev.u[i][t]))
+    end
 
-    _ϕ_n = [zero.(f_prev[t]) for _ in eachindex(ϕ_n)]
-    _ϕ_np1 = [zero.(f_prev[t]) for _ in eachindex(ϕ_np1)]
-    _ϕstar_n = [zero.(f_prev[t]) for _ in eachindex(ϕstar_n)]
-    _ϕstar_nm1 = [zero.(f_prev[t]) for _ in eachindex(ϕstar_nm1)]
+    _ϕ_n = [zero.(f_) for _ in eachindex(ϕ_n)]
+    _ϕ_np1 = [zero.(f_) for _ in eachindex(ϕ_np1)]
+    _ϕstar_n = [zero.(f_) for _ in eachindex(ϕstar_n)]
+    _ϕstar_nm1 = [zero.(f_) for _ in eachindex(ϕstar_nm1)]
 
     for k′ in 1:k
-      ϕ_and_ϕstar!((f_prev=f_vert(max(1, t - 1 - k + k′), t), ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
+      f_vert!(max(1, t - 1 - k + k′), t)
+      ϕ_and_ϕstar!((f_prev=cache.f_next[t, :], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
       _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
     end
 
-    foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕ_n, _ϕ_n)
-    foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕ_np1, _ϕ_np1)
-    foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕstar_n, _ϕstar_n)
-    foreach((ϕ, ϕ′) -> insert!(ϕ.u, t, ϕ′), ϕstar_nm1, _ϕstar_nm1)
+    for i in eachindex(f_prev.u)
+      foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕ_n, _ϕ_n)
+      foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕ_np1, _ϕ_np1)
+      foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕstar_n, _ϕstar_n)
+      foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕstar_nm1, _ϕstar_nm1)
+    end
   end
 end
 
-function extend!(cache::VCABMCache, cache_v::VCABMVolterraCache, times, f_vert, k_vert)
-  f(t, t′) = begin
-    kernel(s) = k_vert(t, t′, s)
-    local_cache = VCABMVolterraCache{eltype(times)}(length(cache.g) - 1, kernel(1))
-    local_cache.gs = cache_v.gs
-    local_cache.ks = cache_v.ks
-    v = quadrature!(local_cache, view(times, 1:t), kernel)
-    #v = trapezium(times, [k_vert(t, t′, s) for s in 1:t])
-    f_vert(v, t, t′)
-  end
+function extend!(caches, times, f_vert)
+  extend!(caches[1], times, f_vert)
 
-  extend!(cache, times, f)
-
-  if cache.error_k > one(cache.error_k)
+  if caches[1].error_k > one(caches[1].error_k) || isnothing(caches[2])
     return
   end
 
   @inbounds begin
-    cache.g = copy(cache.g)    # NOTE: unsafe trick. Create a new g and
-    push!(cache_v.gs, cache.g) # last element of gs now points to the new g
-    push!(cache_v.ks, cache.k)
-
-    foreach(ϕ -> push!(ϕ.u, zero.(cache.f_prev[end])), cache_v.ϕ_n)
-    foreach(ϕ -> push!(ϕ.u, zero.(cache.f_prev[end])), cache_v.ϕ_np1)
-    foreach(ϕ -> push!(ϕ.u, zero.(cache.f_prev[end])), cache_v.ϕstar_n)
-    foreach(ϕ -> push!(ϕ.u, zero.(cache.f_prev[end])), cache_v.ϕstar_nm1)
+    caches[1].g = copy(caches[1].g)    # NOTE: unsafe trick. Create a new g and
+    push!(caches[2].gs, caches[1].g) # last element of gs now points to the new g
+    push!(caches[2].ks, caches[1].k)
   end
 end
 
-function quadrature!(cache::VCABMVolterraCache, times, kernel)
+function quadrature!(cache::VCABMVolterraCache, times, kernel!, boundary)
   @inbounds begin
-    t = length(times)
+    # result gets stored in f_prev
+    kernel!(1)
 
-    cache.f_prev = kernel(1)
     v_next = zero.(cache.f_prev)
-
-    for l in 2:t
+    for l in 2:boundary
       g = cache.gs[l]
       k = cache.ks[l]
 
@@ -177,7 +171,7 @@ function quadrature!(cache::VCABMVolterraCache, times, kernel)
       end
 
       # correct
-      cache.f_prev = kernel(l)
+      kernel!(l) # result gets stored in f_prev
       ϕ_np1!(cache, cache.f_prev, k)
       @. v_next = muladd(g[k], cache.ϕ_np1[k], v_next)
 

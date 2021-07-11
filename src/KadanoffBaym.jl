@@ -7,7 +7,7 @@ using Requires
 using RecursiveArrayTools
 
 export GreenFunction, Symmetrical, SkewHermitian, OneTime
-export kbsolve
+export kbsolve!
 
 include("utils.jl")
 include("gf.jl")
