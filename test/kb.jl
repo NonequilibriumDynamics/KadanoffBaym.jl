@@ -8,15 +8,15 @@
     out[2] = 1im * G[t, t′] - λ * L[t, t′]
   end
 
-  function fh!(out, ts, t, t′)
-    out[1] = -1im * L[t, t′]
-    out[2] = -1im * G[t, t′] + λ * L[t, t′]
+  function fd!(out, ts, t, t′)
+    out[1] = zero(out[1])
+    out[2] = zero(out[2])
   end
 
   G = GreenFunction(zeros(ComplexF64, 1, 1), SkewHermitian)
   L = GreenFunction(1im * ones(ComplexF64, 1, 1), SkewHermitian)
 
-  kb = kbsolve!(fv!, fh!, [G, L], (0.0, 30.0); atol=atol, rtol=rtol)
+  kb = kbsolve!(fv!, fd!, [G, L], (0.0, 30.0); atol=atol, rtol=rtol)
 
   function sol1(t, g0, l0)
     s = sqrt(Complex(λ^2 - 4))
@@ -41,19 +41,19 @@ end
   function kv1!(out, times, t, t′, s)
     out[1] = G[t′, s]
   end
-  function kh1!(out, times, t, t′, s)
-    out[1] = G[s, t] # TODO: review this equation
+  function kd1!(out, times, t, t′, s)
+    out[1] = zero(out[1])
   end
   function fv!(out, v1, v2, times, t, t′)
     out[1] = (1 - v1[1])
   end
-  function fh!(out, v1, v2, times, t, t′)
-    out[1] = (v1[1] - 1)
+  function fd!(out, v1, v2, times, t, t′)
+    out[1] = zero(out[1])
   end
 
   G = GreenFunction(ones(1, 1), Symmetrical)
 
-  kb = kbsolve!(fv!, fh!, [G], (0.0, 30.0); atol=atol, rtol=rtol, (kv1!)=kv1!, (kh1!)=kh1!)
+  kb = kbsolve!(fv!, fd!, [G], (0.0, 30.0); atol=atol, rtol=rtol, (kv1!)=kv1!, (kd1!)=kd1!)
 
   sol(t) = cos(t) + sin(t)
 
@@ -69,13 +69,13 @@ end
     out[1] = -1im * λ * cos(λ * (ts[t] - ts[t′])) * L[t, t′]
   end
 
-  function fh!(out, ts, t, t′)
-    out[1] = +1im * λ * cos(λ * (ts[t] - ts[t′])) * L[t, t′]
+  function fd!(out, ts, t, t′)
+    out[1] = zero(out[1])
   end
 
   L = GreenFunction(-1im * ones(ComplexF64, 1, 1), SkewHermitian)
 
-  kb = kbsolve!(fv!, fh!, [L], (0.0, 200.0); atol=atol, rtol=rtol)
+  kb = kbsolve!(fv!, fd!, [L], (0.0, 200.0); atol=atol, rtol=rtol)
 
   sol(t, t′) = -1.0im * exp(-1.0im * sin(λ * (t - t′)))
 
@@ -89,19 +89,19 @@ end
   function kv1!(out, times, t, t′, s)
     out[1] = s >= t′ ? G[t′, s] : 0.0
   end
-  function kh1!(out, times, t, t′, s)
-    out[1] = s >= t ? G[s, t] : 0.0
+  function kd1!(out, times, t, t′, s)
+    out[1] = zero(out[1])
   end
   function fv!(out, v1, v2, times, t, t′)
     out[1] = (1 - v1[1])
   end
-  function fh!(out, v1, v2, times, t, t′)
-    out[1] = (v1[1] - 1)
+  function fd!(out, v1, v2, times, t, t′)
+    out[1] = zero(out[1])
   end
 
   G = GreenFunction(ones(1, 1), Symmetrical)
 
-  kb = kbsolve!(fv!, fh!, [G], (0.0, 1.0); atol=atol, rtol=rtol, (kv1!)=kv1!, (kh1!)=kh1!)
+  kb = kbsolve!(fv!, fd!, [G], (0.0, 1.0); atol=atol, rtol=rtol, (kv1!)=kv1!, (kd1!)=kd1!)
 
   function sol(t)
     return cos(t) + sin(t)

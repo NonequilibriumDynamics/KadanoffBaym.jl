@@ -67,11 +67,12 @@ function correct!(cache::VCABMCache, f)
 end
 
 # Control order: Section III.7 Eq. (7.7)
-function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
+function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol, norm=ODE_DEFAULT_NORM)
   @unpack u_prev, u_next, g, ϕ_np1, ϕstar_n, k, u_erro = cache
   @inbounds begin
     # Calculate error: Section III.7 Eq. (7.3)
-    cache.error_k = norm(g[k + 1] - g[k]) * norm(error!(u_erro, ϕ_np1[k + 1], u_prev, u_next, atol, rtol))
+    calculate_residuals!(u_erro, ϕ_np1[k + 1], u_prev, u_next, atol, rtol, norm, nothing)
+    cache.error_k = norm(g[k + 1] - g[k], nothing) * norm(u_erro, nothing)
 
     # Fail step: Section III.7 Eq. (7.4)
     if cache.error_k > one(cache.error_k)
@@ -83,13 +84,17 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
     if length(times) <= 5 || k < 3
       cache.k = min(k + 1, 3, kmax)
     else
-      error_k1 = norm(g[k] - g[k - 1]) * norm(error!(u_erro, ϕ_np1[k], u_prev, u_next, atol, rtol))
-      error_k2 = norm(g[k - 1] - g[k - 2]) * norm(error!(u_erro, ϕ_np1[k - 1], u_prev, u_next, atol, rtol))
+      calculate_residuals!(u_erro, ϕ_np1[k], u_prev, u_next, atol, rtol, norm, nothing)
+      error_k1 = norm(g[k] - g[k - 1], nothing) * norm(u_erro, nothing)
+      calculate_residuals!(u_erro, ϕ_np1[k - 1], u_prev, u_next, atol, rtol, norm, nothing)
+      error_k2 = norm(g[k - 1] - g[k - 2], nothing) * norm(u_erro, nothing)
+
       if max(error_k2, error_k1) <= cache.error_k
         cache.k = k - 1
       else
         ϕ_np1!(cache, cache.f_prev, k + 2)
-        error_kstar = norm((times[end] - times[end - 1]) * γstar[k + 2]) * norm(error!(u_erro, ϕ_np1[k + 2], u_prev, u_next, atol, rtol))
+        calculate_residuals!(u_erro, ϕ_np1[k + 2], u_prev, u_next, atol, rtol, norm, nothing)
+        error_kstar = norm((times[end] - times[end - 1]) * γstar[k + 2], nothing) * norm(u_erro, nothing)
         if error_kstar < cache.error_k
           cache.k = min(k + 1, kmax)
           cache.error_k = one(cache.error_k)   # constant dt
@@ -101,33 +106,36 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
   end
 end
 
-function extend!(cache::VCABMCache, times, f_vert!)
-  @unpack f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, k = cache
+function extend!(cache::VCABMCache, times, fv!)
+  @unpack f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, k, error_k = cache
   @inbounds begin
     t = length(times) - 1 # `t` from the last iteration
 
-    if cache.error_k > one(cache.error_k)
+    if error_k > one(error_k)
       return
     end
 
-    f_vert!(t, t)
-    f_ = cache.f_next[t, :]
+    fv!(t, t) # result is stored in f_next
     for i in eachindex(u_prev.u)
-      insert!(f_prev.u[i], t, copy(f_[i]))
-      insert!(f_next.u[i], t, zero(f_[i]))
+      insert!(f_prev.u[i], t, copy(f_next[t, i]))
+      insert!(f_next.u[i], t, zero(f_next[t, i]))
       insert!(u_prev.u[i], t, copy(u_prev.u[i][t]))
       insert!(u_next.u[i], t, zero(u_prev.u[i][t]))
       insert!(u_erro.u[i], t, zero(u_prev.u[i][t]))
     end
 
-    _ϕ_n = [zero.(f_) for _ in eachindex(ϕ_n)]
-    _ϕ_np1 = [zero.(f_) for _ in eachindex(ϕ_np1)]
-    _ϕstar_n = [zero.(f_) for _ in eachindex(ϕstar_n)]
-    _ϕstar_nm1 = [zero.(f_) for _ in eachindex(ϕstar_nm1)]
+    _ϕ_n = [zero.(f_next[t, :]) for _ in eachindex(ϕ_n)]
+    _ϕ_np1 = [zero.(f_next[t, :]) for _ in eachindex(ϕ_np1)]
+    _ϕstar_n = [zero.(f_next[t, :]) for _ in eachindex(ϕstar_n)]
+    _ϕstar_nm1 = [zero.(f_next[t, :]) for _ in eachindex(ϕstar_nm1)]
 
+    # When extending, i.e., adding a new time column, an interpolant for the rhs in this column
+    # has to be built. Since sometimes fv! is discontinuous at the diagonal it is assumed that 
+    # fv! is built always assuming t1 > t2. This way, the interpolant (which requires points t1 < t2)
+    # is smooth and the solver does not stall.
     for k′ in 1:k
-      f_vert!(max(1, t - 1 - k + k′), t)
-      ϕ_and_ϕstar!((f_prev=cache.f_next[t, :], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
+      fv!(max(1, t - 1 - k + k′), t) # result is stored in f_next
+      ϕ_and_ϕstar!((f_prev=f_next[t, :], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
       _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
     end
 
