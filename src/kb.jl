@@ -127,7 +127,7 @@ function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ,
   end
 
   # Reached the end of the integration
-  if iszero(dt) || stop(state.u, state.t)
+  if iszero(dt) || stop(state.t)
     foreach(u -> resize!(u, length(state.t)), state.u) # trim solution
     return false
   else
