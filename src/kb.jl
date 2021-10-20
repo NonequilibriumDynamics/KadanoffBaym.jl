@@ -11,15 +11,15 @@ for some initial condition `u0` from `t0` to `tmax`.
 
 # Parameters
   - `fv!(out, ts, t1, t2)`: the rhs of `du/dt1`
-  - `fh!(out, ts, t1, t2)`: the rhs of `du/dt2`
+  - `fd!(out, ts, t1, t2)`: the rhs of `du/dt1 + `du/dt2`
   - `u0::Vector{<:GreenFunction}`: initial condition for the 2-point functions
   - `(t0, tmax)`: the initial time(s) – can be a vector – and final time
 
 # Optional keyword parameters
   - `kv1!(out, ts, t1, t2, τ)`: the first integral kernel of `du/dt1`
   - `kv2!(out, ts, t1, t2, τ)`: the second integral kernel of `du/dt1`
-  - `kh1!(out, ts, t1, t2, τ)`: the first integral kernel of `du/dt2`
-  - `kh2!(out, ts, t1, t2, τ)`: the second integral kernel of `du/dt2`
+  - `kd1!(out, ts, t1, t2, τ)`: the first integral kernel of `du/dt1 + `du/dt2`
+  - `kd2!(out, ts, t1, t2, τ)`: the second integral kernel of `du/dt1 + `du/dt2`
   - `callback(ts, t1, t2)`: A function that gets called everytime the 2-point function at the indices (t1, t2) is updated
   - `stop(ts)`: A function that gets called at every step that when evaluates to `true` stops the integration
 
@@ -40,8 +40,8 @@ for some initial condition `u0` from `t0` to `tmax`.
     presented in Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
     Solving Ordinary Differential Equations I: Nonstiff Problems
 """
-function kbsolve!(fv!, fh!, u0::Vector{<:GreenFunction}, (t0, tmax); 
-                  (kv1!)=nothing, (kv2!)=nothing, (kh1!)=nothing, (kh2!)=nothing,
+function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax); 
+                  (kv1!)=nothing, (kv2!)=nothing, (kd1!)=nothing, (kd2!)=nothing,
                   callback=(x...) -> nothing, stop=(x...) -> false, 
                   atol=1e-8, rtol=1e-6, dtini=0.0, dtmax=Inf, qmax=5, qmin=1 // 5, γ=9 // 10, kmax=12)
 
@@ -51,7 +51,7 @@ function kbsolve!(fv!, fh!, u0::Vector{<:GreenFunction}, (t0, tmax);
   else
     @assert issorted(t0) "Initial time-grid is not in ascending order"
   end
-  @assert last(t0) < tmax "Only t0 < tmax supported"
+  @assert last(t0) <= tmax "Only t0 <= tmax supported"
 
   # Holds the information about the integration
   state = KBState(u0, t0)
@@ -76,8 +76,8 @@ function kbsolve!(fv!, fh!, u0::Vector{<:GreenFunction}, (t0, tmax);
     return out
   end
   function f!(t)
-    foreach(t′ -> evaluate(fv!, t, t′, kv1!, kv2!, view(cache.f_next, t′, :)), 1:t)
-    cache.f_next[t, :] .+= evaluate(fh!, t, t, kh1!, kh2!, copy(cache.f_next[t, :]))
+    foreach(t′ -> evaluate(fv!, t, t′, kv1!, kv2!, view(cache.f_next, t′, :)), 1:(t - 1))
+    evaluate(fd!, t, t, kd1!, kd2!, view(cache.f_next, t, :))
     return cache.f_next
   end
 
@@ -87,7 +87,6 @@ function kbsolve!(fv!, fh!, u0::Vector{<:GreenFunction}, (t0, tmax);
     t = length(state.t)
 
     # Extend the caches to accomodate the new time column
-    # TODO: extend with horizontal function (important for open systems)
     extend!((cache, cache_v), state.t, (t, t′) -> evaluate(fv!, t, t′, kv1!, kv2!, view(cache.f_next, t′, :)))
 
     # Predictor
@@ -128,7 +127,7 @@ function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ,
   end
 
   # Reached the end of the integration
-  if iszero(dt) || stop(state.u, state.t)
+  if iszero(dt) || stop(state.t)
     foreach(u -> resize!(u, length(state.t)), state.u) # trim solution
     return false
   else

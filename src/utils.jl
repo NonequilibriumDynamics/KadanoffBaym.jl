@@ -1,26 +1,8 @@
-# Error estimation and norm: Section II.4 Eq. (4.11)
-@inline function error!(out::AbstractArray, ũ::AbstractArray, u₀::AbstractArray, u₁::AbstractArray, atol, rtol)
-  @. out = error!(out, ũ, u₀, u₁, atol, rtol)
-  return out
-end
-@inline function error!(out::AbstractArray{<:Number}, ũ::AbstractArray{<:Number}, u₀::AbstractArray{<:Number}, u₁::AbstractArray{<:Number}, atol, rtol)
-  @. out = error_estimate(ũ, u₀, u₁, atol, rtol)
-  return out
-end
-@inline function error_estimate(ũ::Number, u₀::Number, u₁::Number, atol::Real, rtol::Real)
-  return ũ / (atol + max(norm(u₀), norm(u₁)) * rtol)
-end
-@inline norm(u) = LinearAlgebra.norm(u) / sqrt(total_length(u))
-@inline total_length(u::Number) = length(u)
-@inline total_length(u::AbstractArray{<:Number}) = length(u)
-@inline total_length(u::AbstractArray{<:AbstractArray}) = sum(total_length, u)
-@inline total_length(u::RecursiveArrayTools.VectorOfArray) = sum(total_length, u.u)
-
 # Starting Step Size: Section II.4
-function initial_step(f0, u0, atol, rtol)
-  sc = atol + rtol * norm(u0)
-  d0 = norm(u0 ./ sc)
-  d1 = norm(f0 ./ sc)
+function initial_step(f0, u0, atol, rtol, norm=ODE_DEFAULT_NORM)
+  sc = atol + rtol * norm(u0, nothing)
+  d0 = norm(u0 ./ sc, nothing)
+  d1 = norm(f0 ./ sc, nothing)
 
   return dt0 = min(d0, d1) < 1e-5 ? 1e-6 : 1e-2 * d0 / d1
 
