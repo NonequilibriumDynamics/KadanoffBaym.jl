@@ -10,14 +10,14 @@ Solves the 2-time Voltera integro-differential equation
 for some initial condition `u0` from `t0` to `tmax`.
 
 # Parameters
-  - `fv!(out, ts, t1, t2)`: the rhs of `du/dt1` assuming t1 > t2
+  - `fv!(out, ts, t1, t2)`: the rhs of `du/dt1`
   - `fd!(out, ts, t1, t2)`: the rhs of `du/dt1 + `du/dt2`
   - `u0::Vector{<:GreenFunction}`: initial condition for the 2-point functions
   - `(t0, tmax)`: the initial time(s) – can be a vector – and final time
 
 # Optional keyword parameters
-  - `kv1!(out, ts, t1, t2, τ)`: the first integral kernel of `du/dt1` assuming t1 > t2
-  - `kv2!(out, ts, t1, t2, τ)`: the second integral kernel of `du/dt1` assuming t1 > t2
+  - `kv1!(out, ts, t1, t2, τ)`: the first integral kernel of `du/dt1`
+  - `kv2!(out, ts, t1, t2, τ)`: the second integral kernel of `du/dt1`
   - `kd1!(out, ts, t1, t2, τ)`: the first integral kernel of `du/dt1 + `du/dt2`
   - `kd2!(out, ts, t1, t2, τ)`: the second integral kernel of `du/dt1 + `du/dt2`
   - `callback(ts, t1, t2)`: A function that gets called everytime the 2-point function at the indices (t1, t2) is updated
@@ -51,7 +51,7 @@ function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax);
   else
     @assert issorted(t0) "Initial time-grid is not in ascending order"
   end
-  @assert last(t0) < tmax "Only t0 < tmax supported"
+  @assert last(t0) <= tmax "Only t0 <= tmax supported"
 
   # Holds the information about the integration
   state = KBState(u0, t0)
