@@ -63,6 +63,7 @@ function wigner_transform(x::AbstractMatrix; ts=1:size(x, 1), fourier=true)
 
   x_W = circshift(x_W, (Nt ÷ 2, 0))
   τs = ts - reverse(ts)
+  τs = τs .- (isodd(Nt) ? 0.0 : 0.5(τs[2] - τs[1]))
 
   if !fourier
     return x_W, (τs, ts)
