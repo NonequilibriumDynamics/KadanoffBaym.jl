@@ -4,7 +4,9 @@ using LinearAlgebra
 using EllipsisNotation
 using UnPack
 using Requires
-using DiffEqBase: calculate_residuals!, ODE_DEFAULT_NORM, RecursiveArrayTools.VectorOfArray
+using OrdinaryDiffEq: OrdinaryDiffEqMutableCache, γstar, ϕ_np1!
+using OrdinaryDiffEq.DiffEqBase: calculate_residuals!, ODE_DEFAULT_NORM
+using OrdinaryDiffEq.RecursiveArrayTools: VectorOfArray
 
 export GreenFunction, Symmetrical, SkewHermitian, OneTime
 export kbsolve!

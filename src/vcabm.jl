@@ -1,6 +1,6 @@
 # Part of the following code is licensed under the MIT "Expact" Lience, 
 # from https://github.com/SciML/OrdinaryDiffEq.jl
-mutable struct VCABMCache{T,U}
+mutable struct VCABMCache{T,U} <: OrdinaryDiffEqMutableCache
   u_prev::U
   u_next::U
   u_erro::U
@@ -119,9 +119,9 @@ function extend!(cache::VCABMCache, times, fv!)
     for i in eachindex(u_prev.u)
       insert!(f_prev.u[i], t, copy(f_next[t, i]))
       insert!(f_next.u[i], t, zero(f_next[t, i]))
-      insert!(u_prev.u[i], t, copy(u_prev.u[i][t]))
-      insert!(u_next.u[i], t, zero(u_prev.u[i][t]))
-      insert!(u_erro.u[i], t, zero(u_prev.u[i][t]))
+      insert!(u_prev.u[i], t, copy(u_prev[t, i]))
+      insert!(u_next.u[i], t, zero(u_prev[t, i]))
+      insert!(u_erro.u[i], t, zero(u_prev[t, i]))
     end
 
     _ϕ_n = [zero.(f_next[t, :]) for _ in eachindex(ϕ_n)]
@@ -206,16 +206,6 @@ function ϕ_and_ϕstar!(cache, times, k)
   end
 end
 
-function ϕ_np1!(cache, du, k)
-  @unpack ϕ_np1, ϕstar_n = cache
-  @inbounds begin
-    @. ϕ_np1[1] = du
-    for i in 2:k
-      @. ϕ_np1[i] = ϕ_np1[i - 1] - ϕstar_n[i - 1]
-    end
-  end
-end
-
 function g_coeffs!(cache, times, k)
   @unpack c, g = cache
   @inbounds begin
@@ -235,7 +225,3 @@ function g_coeffs!(cache, times, k)
     end
   end
 end
-
-# Coefficients for the implicit Adams methods
-const γstar = [1, -1 / 2, -1 / 12, -1 / 24, -19 / 720, -3 / 160, -863 / 60480, -275 / 24192, -33953 / 3628800, -0.00789255, -0.00678585, -0.00592406,
-               -0.00523669, -0.0046775, -0.00421495, -0.0038269]
