@@ -1,11 +1,10 @@
 module KadanoffBaym
 
-using LinearAlgebra
+import LinearAlgebra
 using EllipsisNotation
 using UnPack
 using Requires
 using OrdinaryDiffEq: OrdinaryDiffEqMutableCache, γstar, ϕ_np1!
-using OrdinaryDiffEq.DiffEqBase: calculate_residuals!, ODE_DEFAULT_NORM
 using OrdinaryDiffEq.RecursiveArrayTools: VectorOfArray
 
 export GreenFunction, Symmetrical, SkewHermitian, OneTime

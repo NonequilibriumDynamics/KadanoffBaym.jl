@@ -67,12 +67,12 @@ function correct!(cache::VCABMCache, f)
 end
 
 # Control order: Section III.7 Eq. (7.7)
-function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol, norm=ODE_DEFAULT_NORM)
+function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
   @unpack u_prev, u_next, g, ϕ_np1, ϕstar_n, k, u_erro = cache
   @inbounds begin
     # Calculate error: Section III.7 Eq. (7.3)
-    calculate_residuals!(u_erro, ϕ_np1[k + 1], u_prev, u_next, atol, rtol, norm, nothing)
-    cache.error_k = norm(g[k + 1] - g[k], nothing) * norm(u_erro, nothing)
+    calculate_residuals!(u_erro, ϕ_np1[k + 1], u_prev, u_next, atol, rtol, norm)
+    cache.error_k = norm(g[k + 1] - g[k]) * norm(u_erro)
 
     # Fail step: Section III.7 Eq. (7.4)
     if cache.error_k > one(cache.error_k)
@@ -84,17 +84,17 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol, norm=ODE_DEFAULT
     if length(times) <= 5 || k < 3
       cache.k = min(k + 1, 3, kmax)
     else
-      calculate_residuals!(u_erro, ϕ_np1[k], u_prev, u_next, atol, rtol, norm, nothing)
-      error_k1 = norm(g[k] - g[k - 1], nothing) * norm(u_erro, nothing)
-      calculate_residuals!(u_erro, ϕ_np1[k - 1], u_prev, u_next, atol, rtol, norm, nothing)
-      error_k2 = norm(g[k - 1] - g[k - 2], nothing) * norm(u_erro, nothing)
+      calculate_residuals!(u_erro, ϕ_np1[k], u_prev, u_next, atol, rtol, norm)
+      error_k1 = norm(g[k] - g[k - 1]) * norm(u_erro)
+      calculate_residuals!(u_erro, ϕ_np1[k - 1], u_prev, u_next, atol, rtol, norm)
+      error_k2 = norm(g[k - 1] - g[k - 2]) * norm(u_erro)
 
       if max(error_k2, error_k1) <= cache.error_k
         cache.k = k - 1
       else
         ϕ_np1!(cache, cache.f_prev, k + 2)
-        calculate_residuals!(u_erro, ϕ_np1[k + 2], u_prev, u_next, atol, rtol, norm, nothing)
-        error_kstar = norm((times[end] - times[end - 1]) * γstar[k + 2], nothing) * norm(u_erro, nothing)
+        calculate_residuals!(u_erro, ϕ_np1[k + 2], u_prev, u_next, atol, rtol, norm)
+        error_kstar = norm((times[end] - times[end - 1]) * γstar[k + 2]) * norm(u_erro)
         if error_kstar < cache.error_k
           cache.k = min(k + 1, kmax)
           cache.error_k = one(cache.error_k)   # constant dt
