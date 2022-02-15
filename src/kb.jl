@@ -54,7 +54,7 @@ function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax);
   @assert last(t0) <= tmax "Only t0 <= tmax supported"
 
   # Holds the information about the integration
-  state = KBState(u0, t0)
+  state = (u=u0, t=t0)
 
   # Holds the information necessary to integrate
   cache = let
@@ -137,9 +137,4 @@ function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ,
     push!(state.t, last(state.t) + dt)
     return true
   end
-end
-
-struct KBState{U,T}
-  u::U          # 2-point functions
-  t::Vector{T}  # time-grid
 end

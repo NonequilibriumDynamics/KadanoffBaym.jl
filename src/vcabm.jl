@@ -44,7 +44,7 @@ end
 
 # Explicit Adams: Section III.5 Eq. (5.5)
 function predict!(cache::VCABMCache, times)
-  @unpack u_prev, u_next, g, ϕstar_n, k = cache
+  (; u_prev, u_next, g, ϕstar_n, k) = cache
   @inbounds begin
     ϕ_and_ϕstar!(cache, times, k + 1)
     g_coeffs!(cache, times, k + 1)
@@ -58,7 +58,7 @@ end
 
 # Implicit Adams: Section III.5 Eq (5.7)
 function correct!(cache::VCABMCache, f)
-  @unpack u_next, g, ϕ_np1, ϕstar_n, k = cache
+  (; u_next, g, ϕ_np1, ϕstar_n, k) = cache
   @inbounds begin
     ϕ_np1!(cache, f(), k + 1)
     @. u_next = muladd(g[k], ϕ_np1[k], u_next)
@@ -68,7 +68,7 @@ end
 
 # Control order: Section III.7 Eq. (7.7)
 function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
-  @unpack u_prev, u_next, g, ϕ_np1, ϕstar_n, k, u_erro = cache
+  (; u_prev, u_next, g, ϕ_np1, ϕstar_n, k, u_erro) = cache
   @inbounds begin
     # Calculate error: Section III.7 Eq. (7.3)
     calculate_residuals!(u_erro, ϕ_np1[k + 1], u_prev, u_next, atol, rtol, norm)
@@ -107,7 +107,7 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
 end
 
 function extend!(cache::VCABMCache, times, fv!)
-  @unpack f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, k, error_k = cache
+  (; f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, k, error_k) = cache
   @inbounds begin
     t = length(times) - 1 # `t` from the last iteration
 
@@ -192,7 +192,7 @@ end
 
 # Section III.5: Eq (5.9-5.10)
 function ϕ_and_ϕstar!(cache, times, k)
-  @unpack f_prev, ϕstar_nm1, ϕ_n, ϕstar_n = cache
+  (; f_prev, ϕstar_nm1, ϕ_n, ϕstar_n) = cache
   @inbounds begin
     t = reverse(times)
     β = one(eltype(times))
@@ -207,7 +207,7 @@ function ϕ_and_ϕstar!(cache, times, k)
 end
 
 function g_coeffs!(cache, times, k)
-  @unpack c, g = cache
+  (; c, g) = cache
   @inbounds begin
     t = reverse(times)
     dt = t[1] - t[2]

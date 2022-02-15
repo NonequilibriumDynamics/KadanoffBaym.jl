@@ -2,7 +2,6 @@ module KadanoffBaym
 
 import LinearAlgebra
 using EllipsisNotation
-using UnPack
 using Requires
 using OrdinaryDiffEq: OrdinaryDiffEqMutableCache, γstar, ϕ_np1!
 using OrdinaryDiffEq.RecursiveArrayTools: VectorOfArray
