@@ -42,7 +42,7 @@ for some initial condition `u0` from `t0` to `tmax`.
 """
 function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax); 
                   (kv1!)=nothing, (kv2!)=nothing, (kd1!)=nothing, (kd2!)=nothing,
-                  callback=(x...) -> nothing, stop=(x...) -> false, 
+                  callback=(x...)->nothing, stop=(x...)->false, 
                   atol=1e-8, rtol=1e-6, dtini=0.0, dtmax=Inf, qmax=5, qmin=1 // 5, γ=9 // 10, kmax=12)
 
   # Support for an initial time-grid
@@ -58,49 +58,52 @@ function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax);
 
   # Holds the information necessary to integrate
   cache = let
-    t = length(state.t)
-    VCABMCache{eltype(state.t)}(kmax, VectorOfArray([[u[t, t′] for t′ in 1:t] for u in state.u]))
+    t1 = length(state.t)
+    VCABMCache{eltype(state.t)}(kmax, VectorOfArray([[u[t1, t2] for t2 in 1:t1] for u in state.u]))
   end
 
   cache_v = VCABMVolterraCache{eltype(state.t)}(kmax, cache.f_next[1, :])
 
   # The rhs is seen as a univariate problem
-  function evaluate(f!, t, t′, k1!, k2!, out)
+  function evaluate(f!, t1, t2, k1!, k2!, out)
     if isnothing(k1!) && isnothing(k2!)
-      f!(out, state.t, t, t′)
+      f!(out, state.t, t1, t2)
     else
-      v1 = isnothing(k1!) ? nothing : quadrature!(cache_v, state.t, s -> k1!(cache_v.f_prev, state.t, t, t′, s), t)
-      v2 = isnothing(k2!) ? nothing : quadrature!(cache_v, state.t, s -> k2!(cache_v.f_prev, state.t, t, t′, s), t′)
-      f!(out, v1, v2, state.t, t, t′)
+      v1 = isnothing(k1!) ? nothing : quadrature!(cache_v, state.t, s -> k1!(cache_v.f_prev, state.t, t1, t2, s), t1)
+      v2 = isnothing(k2!) ? nothing : quadrature!(cache_v, state.t, s -> k2!(cache_v.f_prev, state.t, t1, t2, s), t2)
+      f!(out, v1, v2, state.t, t1, t2)
     end
     return out
   end
-  function f!(t)
-    foreach(t′ -> evaluate(fv!, t, t′, kv1!, kv2!, view(cache.f_next, t′, :)), 1:(t - 1))
-    evaluate(fd!, t, t, kd1!, kd2!, view(cache.f_next, t, :))
+
+  function f!(t1)
+    Threads.@threads for t2 in 1:(t1-1)
+      evaluate(fv!, t1, t2, kv1!, kv2!, view(cache.f_next, t2, :))
+    end
+    evaluate(fd!, t1, t1, kd1!, kd2!, view(cache.f_next, t1, :))
     return cache.f_next
   end
 
   cache.f_prev .= f!(length(state.t))
 
   while timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ, stop)
-    t = length(state.t)
+    t1 = length(state.t)
 
     # Extend the caches to accomodate the new time column
-    extend!((cache, cache_v), state.t, (t, t′) -> evaluate(fv!, t, t′, kv1!, kv2!, view(cache.f_next, t′, :)))
+    extend!((cache, cache_v), state.t, (t1, t2) -> evaluate(fv!, t1, t2, kv1!, kv2!, view(cache.f_next, t2, :)))
 
     # Predictor
     u_next = predict!(cache, state.t)
-    foreach((u, u′) -> foreach(t′ -> u[t, t′] = u′[t′], 1:t), state.u, u_next.u)
-    foreach(t′ -> callback(state.t, t, t′), 1:t)
+    foreach((u, u′) -> foreach(t2 -> u[t1, t2] = u′[t2], 1:t1), state.u, u_next.u)
+    foreach(t2 -> callback(state.t, t1, t2), 1:t1)
 
     # Corrector
-    u_next = correct!(cache, () -> f!(t))
-    foreach((u, u′) -> foreach(t′ -> u[t, t′] = u′[t′], 1:t), state.u, u_next.u)
-    foreach(t′ -> callback(state.t, t, t′), 1:t)
+    u_next = correct!(cache, () -> f!(t1))
+    foreach((u, u′) -> foreach(t2 -> u[t1, t2] = u′[t2], 1:t1), state.u, u_next.u)
+    foreach(t2 -> callback(state.t, t1, t2), 1:t1)
 
     # Calculate error and adjust order
-    adjust!(cache, state.t, () -> f!(t), kmax, atol, rtol)
+    adjust!(cache, state.t, () -> f!(t1), kmax, atol, rtol)
   end # timeloop!
   return state
 end
