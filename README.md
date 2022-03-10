@@ -17,19 +17,19 @@ The most recent version of KadanoffBaym.jl requires Julia v1.7 or later.
 
 ## Examples
 
-Various examples of the algorithm in action are found in the [examples](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/tree/master/example) folder
+Various examples of the algorithm in action are found in the [examples](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/tree/master/examples) folder
 
 
 ## Scalability
 
-For now, KadanoffBaym.jl is restricted to run on a single machine, for which the maximum number of threads available will be used. You can set this number by running julia with the `thread` flag
+For now, KadanoffBaym.jl is restricted to run on a single machine, for which the maximum number of threads available will be used. You can set this number by running Julia with the `thread` [flag](https://docs.julialang.org/en/v1/manual/multi-threading/#man-multithreading)
 ```
-julia -t 4
+julia -t auto
 ```
 
 ## Contributing
 
-This is meant to be a community project and all contributions and [issues](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/issues), [PRs](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/pulls) and [discussions](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/discussions) are encouraged.
+This is meant to be a community project and all contributions, via [issues](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/issues), [PRs](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/pulls) and [discussions](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/discussions) are encouraged and greatly appreciated.
 
 
 ## Citing
