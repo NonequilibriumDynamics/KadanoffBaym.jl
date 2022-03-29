@@ -1,25 +1,21 @@
 """
-    kbsolve!(fv!, fh!, u0, (t0, tmax); ...)
+    kbsolve!(fv!, fd!, u0, (t0, tmax); ...)
 
 Solves the 2-time Voltera integro-differential equation
 
-``du/dt1 = f(u,t1,t2) + ∫₀ᵗ¹dτ K₁[u,t1,t2,τ] + ∫₀ᵗ²dτ K₂[u,t1,t2,τ]``
+``du/dt1 = fv(u,t1,t2) + ∫_{t0]^{t1} dτ K₁v[u,t1,t2,τ] + ∫_{t0}^{t2} dτ K₂v[u,t1,t2,τ]``
 
-``du/dt2 = f'(u,t1,t2) + ∫₀ᵗ¹dτ K₁'[u,t1,t2,τ] + ∫₀ᵗ²dτ K₂'[u,t1,t2,τ]``
+``du/dt2 = fh(u,t1,t2) + ∫_{t0}^{t1} dτ K₁h[u,t1,t2,τ] + ∫_{t0}^{t2} dτ K₂h[u,t1,t2,τ]``
 
 for some initial condition `u0` from `t0` to `tmax`.
 
 # Parameters
-  - `fv!(out, ts, t1, t2)`: the rhs of `du/dt1`
-  - `fd!(out, ts, t1, t2)`: the rhs of `du/dt1 + `du/dt2`
+  - `fv!(out, ts, w1, w2, t1, t2)`: the rhs of `du/dt1` where `wj` are weights to evaluate the 1st (j=1) and 2nd (j=2) integrals as sum_i wj_i kj_i
+  - `fd!(out, ts, w1, w2, t1, t2)`: the rhs of `du/dt1 + `du/dt2`
   - `u0::Vector{<:GreenFunction}`: initial condition for the 2-point functions
   - `(t0, tmax)`: the initial time(s) – can be a vector – and final time
 
 # Optional keyword parameters
-  - `kv1!(out, ts, t1, t2, τ)`: the first integral kernel of `du/dt1`
-  - `kv2!(out, ts, t1, t2, τ)`: the second integral kernel of `du/dt1`
-  - `kd1!(out, ts, t1, t2, τ)`: the first integral kernel of `du/dt1 + `du/dt2`
-  - `kd2!(out, ts, t1, t2, τ)`: the second integral kernel of `du/dt1 + `du/dt2`
   - `callback(ts, t1, t2)`: A function that gets called everytime the 2-point function at the indices (t1, t2) is updated
   - `stop(ts)`: A function that gets called at every step that when evaluates to `true` stops the integration
 
@@ -41,8 +37,7 @@ for some initial condition `u0` from `t0` to `tmax`.
     Solving Ordinary Differential Equations I: Nonstiff Problems
 """
 function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax); 
-                  (kv1!)=nothing, (kv2!)=nothing, (kd1!)=nothing, (kd2!)=nothing,
-                  callback=(x...)->nothing, stop=(x...)->false, 
+                  callback=(x...)->nothing, stop=(x...)->false,
                   atol=1e-8, rtol=1e-6, dtini=0.0, dtmax=Inf, qmax=5, qmin=1 // 5, γ=9 // 10, kmax=12)
 
   # Support for an initial time-grid
@@ -54,7 +49,7 @@ function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax);
   @assert last(t0) <= tmax "Only t0 <= tmax supported"
 
   # Holds the information about the integration
-  state = (u=u0, t=t0)
+  state = (u=u0, t=t0, w=VolterraWeights(t0))
 
   # Holds the information necessary to integrate
   cache = let
@@ -62,25 +57,12 @@ function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax);
     VCABMCache{eltype(state.t)}(kmax, VectorOfArray([[u[t1, t2] for t2 in 1:t1] for u in state.u]))
   end
 
-  cache_v = VCABMVolterraCache{eltype(state.t)}(kmax, cache.f_next[1, :])
-
   # The rhs is seen as a univariate problem
-  function evaluate(f!, t1, t2, k1!, k2!, out)
-    if isnothing(k1!) && isnothing(k2!)
-      f!(out, state.t, t1, t2)
-    else
-      v1 = isnothing(k1!) ? nothing : quadrature!(cache_v, state.t, s -> k1!(cache_v.f_prev, state.t, t1, t2, s), t1)
-      v2 = isnothing(k2!) ? nothing : quadrature!(cache_v, state.t, s -> k2!(cache_v.f_prev, state.t, t1, t2, s), t2)
-      f!(out, v1, v2, state.t, t1, t2)
-    end
-    return out
-  end
-
   function f!(t1)
     Threads.@threads for t2 in 1:(t1-1)
-      evaluate(fv!, t1, t2, kv1!, kv2!, view(cache.f_next, t2, :))
+      fv!(view(cache.f_next, t2, :), state.t, state.w.ws[t1], state.w.ws[t2], t1, t2)
     end
-    evaluate(fd!, t1, t1, kd1!, kd2!, view(cache.f_next, t1, :))
+    fd!(view(cache.f_next, t1, :), state.t, state.w.ws[t1], state.w.ws[t1], t1, t1)
     return cache.f_next
   end
 
@@ -90,17 +72,17 @@ function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax);
     t1 = length(state.t)
 
     # Extend the caches to accomodate the new time column
-    extend!((cache, cache_v), state.t, (t1, t2) -> evaluate(fv!, t1, t2, kv1!, kv2!, view(cache.f_next, t2, :)))
+    extend!(cache, state, (t1, t2) -> fv!(view(cache.f_next, t2, :), state.t, state.w.ws[1], state.w.ws[2], t1, t2))
 
     # Predictor
     u_next = predict!(cache, state.t)
     foreach((u, u′) -> foreach(t2 -> u[t1, t2] = u′[t2], 1:t1), state.u, u_next.u)
-    foreach(t2 -> callback(state.t, t1, t2), 1:t1)
+    foreach(t2 -> callback(state.t, state.w.ws[t1], state.w.ws[t2], t1, t2), 1:t1)
 
     # Corrector
     u_next = correct!(cache, () -> f!(t1))
     foreach((u, u′) -> foreach(t2 -> u[t1, t2] = u′[t2], 1:t1), state.u, u_next.u)
-    foreach(t2 -> callback(state.t, t1, t2), 1:t1)
+    foreach(t2 -> callback(state.t, state.w.ws[t1], state.w.ws[t2], t1, t2), 1:t1)
 
     # Calculate error and adjust order
     adjust!(cache, state.t, () -> f!(t1), kmax, atol, rtol)
@@ -119,9 +101,11 @@ function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ,
     dt = min((state.t[end] - state.t[end - 1]) / q, dtmax)
   end
 
-  # Remove the last element of the time-grid if last step failed
+  # Remove the last element of the time-grid / weights if last step failed
   if cache.error_k > one(cache.error_k)
     pop!(state.t)
+    pop!(state.w.ks)
+    pop!(state.w.ws)
   end
 
   # Don't go over tmax
@@ -138,6 +122,8 @@ function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ,
       foreach(u -> resize!(u, length(state.t) + min(50, ceil(Int, (tmax - state.t[end]) / dt))), state.u)
     end
     push!(state.t, last(state.t) + dt)
+    push!(state.w.ks, cache.k)
+    push!(state.w.ws, calculate_weights(state.t, state.w.ks, atol, rtol))
     return true
   end
 end

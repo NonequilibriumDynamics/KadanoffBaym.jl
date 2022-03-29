@@ -5,12 +5,14 @@ using EllipsisNotation
 using Requires
 using OrdinaryDiffEq: OrdinaryDiffEqMutableCache, γstar, ϕ_np1!
 using OrdinaryDiffEq.RecursiveArrayTools: VectorOfArray
+using QuadGK
 
 export GreenFunction, Symmetrical, SkewHermitian, OneTime
 export kbsolve!
 
 include("utils.jl")
 include("gf.jl")
+include("vie.jl")
 include("vcabm.jl")
 include("kb.jl")
 

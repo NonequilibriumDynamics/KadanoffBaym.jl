@@ -25,29 +25,12 @@ mutable struct VCABMCache{T,U} <: OrdinaryDiffEqMutableCache
   end
 end
 
-mutable struct VCABMVolterraCache{T,U}
-  f_prev::U
-
-  ϕ_n::Vector{U}
-  ϕ_np1::Vector{U}
-  ϕstar_n::Vector{U}
-  ϕstar_nm1::Vector{U}
-
-  gs::Vector{Vector{T}} # gⱼ(tₙ) for all n
-  ks::Vector{Int}       # kₙ for all n
-
-  function VCABMVolterraCache{T}(kmax, f_prev::U) where {T,U}
-    return new{T,typeof(f_prev)}(f_prev, [zero.(f_prev) for _ in 1:(kmax + 1)], [zero.(f_prev) for _ in 1:(kmax + 2)],
-                                 [zero.(f_prev) for _ in 1:(kmax + 1)], [zero.(f_prev) for _ in 1:(kmax + 1)], [zeros(T, kmax + 1)], [1])
-  end
-end
-
 # Explicit Adams: Section III.5 Eq. (5.5)
 function predict!(cache::VCABMCache, times)
   (; u_prev, u_next, g, ϕstar_n, k) = cache
   @inbounds begin
-    ϕ_and_ϕstar!(cache, times, k + 1)
-    g_coeffs!(cache, times, k + 1)
+    ϕ_and_ϕstar!(cache, times, k + 1 == length(times) ? k : k + 1)
+    g_coeffs!(cache, times, k + 1 == length(times) ? k : k + 1)
     @. u_next = muladd(g[1], ϕstar_n[1], u_prev)
     for i in 2:(k - 1)
       @. u_next = muladd(g[i], ϕstar_n[i], u_next)
@@ -106,10 +89,11 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
   end
 end
 
-function extend!(cache::VCABMCache, times, fv!)
-  (; f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, k, error_k) = cache
+function extend!(cache::VCABMCache, state, fv!)
+  (; f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, error_k) = cache
   @inbounds begin
-    t = length(times) - 1 # `t` from the last iteration
+    t = length(state.t) - 1 # `t` and `k` from the last iteration
+    k = isone(t) ? 1 : state.w.ks[end-1]
 
     if error_k > one(error_k)
       return
@@ -135,7 +119,7 @@ function extend!(cache::VCABMCache, times, fv!)
     # is smooth and the solver does not stall.
     for k′ in 1:k
       fv!(max(1, t - 1 - k + k′), t) # result is stored in f_next
-      ϕ_and_ϕstar!((f_prev=f_next[t, :], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
+      ϕ_and_ϕstar!((f_prev=f_next[t, :], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(state.t, 1:(t - k + k′)), k′)
       _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
     end
 
@@ -146,48 +130,6 @@ function extend!(cache::VCABMCache, times, fv!)
       foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕstar_nm1, _ϕstar_nm1)
     end
   end
-end
-
-function extend!(caches, times, f_vert)
-  extend!(caches[1], times, f_vert)
-
-  if caches[1].error_k > one(caches[1].error_k) || isnothing(caches[2])
-    return
-  end
-
-  @inbounds begin
-    caches[1].g = copy(caches[1].g)    # NOTE: unsafe trick. Create a new g and
-    push!(caches[2].gs, caches[1].g) # last element of gs now points to the new g
-    push!(caches[2].ks, caches[1].k)
-  end
-end
-
-function quadrature!(cache::VCABMVolterraCache, times, kernel!, boundary)
-  @inbounds begin
-    # result gets stored in f_prev
-    kernel!(1)
-
-    v_next = zero.(cache.f_prev)
-    for l in 2:boundary
-      g = cache.gs[l]
-      k = cache.ks[l]
-
-      # predict
-      ϕ_and_ϕstar!(cache, view(times, 1:l), k)
-      for i in 1:(k - 1)
-        @. v_next = muladd(g[i], cache.ϕstar_n[i], v_next)
-      end
-
-      # correct
-      kernel!(l) # result gets stored in f_prev
-      ϕ_np1!(cache, cache.f_prev, k)
-      @. v_next = muladd(g[k], cache.ϕ_np1[k], v_next)
-
-      # circular caches
-      cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-    end
-  end
-  return v_next
 end
 
 # Section III.5: Eq (5.9-5.10)
