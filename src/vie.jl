@@ -21,15 +21,16 @@ function calculate_weights(ts, ks, atol=1e-8, rtol=1e-3)
   @assert length(ts) == length(ks) + 1
 
   # Integral of Lagrange polynom
-  L(; i, j, k) = quadgk(ts[i], ts[i+1]; atol=atol, rtol=rtol) do x
-    prod((x - ts[i+1 - m]) / (ts[i+1 - j] - ts[i+1 - m]) for m in 0:k if m != j)
+  L(; i, j, ks) = quadgk(ts[i], ts[i+1]; atol=atol, rtol=rtol) do x
+    prod((x - ts[i+1 - m]) / (ts[i+1 - j] - ts[i+1 - m]) for m in ks if m != j)
   end[1]
 
   # Compute weights
   ws = zero(ts)
   for (i, k) in enumerate(ks)
-    for j in 0:k
-      ws[i+1-j] += L(i=i, j=j, k=k)
+    r = -min((k-1), length(ks)-i):min(k,i)
+    for j in r
+      ws[i+1-j] += L(i=i, j=j, ks=r)
     end
   end
 
