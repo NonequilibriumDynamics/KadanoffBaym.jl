@@ -72,7 +72,7 @@ function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax);
     t1 = length(state.t)
 
     # Extend the caches to accomodate the new time column
-    extend!(cache, state, (t1, t2) -> fv!(view(cache.f_next, t2, :), state.t, state.w.ws[1], state.w.ws[2], t1, t2))
+    extend!(cache, state.t, (t1, t2) -> fv!(view(cache.f_next, t2, :), state.t, state.w.ws[t1], state.w.ws[t2], t1, t2))
 
     # Predictor
     u_next = predict!(cache, state.t)
