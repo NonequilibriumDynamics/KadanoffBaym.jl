@@ -5,10 +5,6 @@ using KadanoffBaym
 
 using JLD
 
-using PyPlot
-PyPlot.plt.style.use("./paper.mplstyle")
-
-
 # ==========================================================================================================
 
 function fixed_point(F::Function, x0::AbstractArray; 
