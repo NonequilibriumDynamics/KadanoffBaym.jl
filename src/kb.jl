@@ -10,13 +10,14 @@ Solves the 2-time Voltera integro-differential equation
 for some initial condition `u0` from `t0` to `tmax`.
 
 # Parameters
-  - `fv!(out, ts, w1, w2, t1, t2)`: the rhs of `du/dt1` where `wj` are weights to evaluate the 1st (j=1) and 2nd (j=2) integrals as sum_i wj_i kj_i
-  - `fd!(out, ts, w1, w2, t1, t2)`: the rhs of `du/dt1 + `du/dt2`
+  - `fv!(out, ts, w1, w2, t1, t2)`: the rhs of `du/dt1` where `wj` are weights to evaluate the 1st (j=1) and 2nd (j=2) integrals as `sum_i wj_i kj_i`. 
+    The output should be saved in-place in `out`, which has the same shape as `u0`. The full one-dimensional time-grid is given by `ts` and the indices in the 2-time plane are (`t1`, `t2`).
+  - `fd!(out, ts, w1, w2, t1, t2)`: the rhs of `du/dt1 + du/dt2`
   - `u0::Vector{<:GreenFunction}`: initial condition for the 2-point functions
   - `(t0, tmax)`: the initial time(s) – can be a vector – and final time
 
 # Optional keyword parameters
-  - `callback(ts, t1, t2)`: A function that gets called everytime the 2-point function at the indices (t1, t2) is updated
+  - `callback(ts, w1, w2, t1, t2)`: A function that gets called everytime the 2-point function at the indices (`t1`, `t2`) is updated
   - `stop(ts)`: A function that gets called at every step that when evaluates to `true` stops the integration
 
   For two approximations of the solution, the local error of the less precise is given by |y1 - y1'| < atol + rtol * max(y0,y1)
