@@ -49,77 +49,81 @@ md"""
 ```
 """
 
-# ╔═╡ 582a1fa3-bb83-4751-8feb-3c1ad577aed6
-Base.@kwdef struct FermiHubbardModel
-    U
-    
-    # 8-site 3D cubic lattice
-    H = begin
-        h = BlockArray{ComplexF64}(undef_blocks, [4, 4], [4, 4])
-        diag_block = [0 -1 0 -1; -1 0 -1 0; 0 -1 0 -1; -1 0 -1 0]
-        setblock!(h, diag_block, 1, 1)
-        setblock!(h, diag_block, 2, 2)
-        setblock!(h, Diagonal(-1 .* ones(4)), 1, 2)
-        setblock!(h, Diagonal(-1 .* ones(4)), 2, 1)
-
-        full_h = BlockArray{ComplexF64}(undef_blocks, [8, 8], [8, 8])
-        setblock!(full_h, h |> Array, 1, 1)
-        setblock!(full_h, h |> Array, 2, 2)
-        setblock!(full_h, zeros(ComplexF64, 8, 8), 1, 2)
-        setblock!(full_h, zeros(ComplexF64, 8, 8), 2, 1)
-        
-        full_h |> Array
-    end
-    
-    H1 = H[1:8, 1:8]
-    H2 = H[1 + 8:2 * 8, 1 + 8:2 * 8]
-end
-
-# ╔═╡ bdf0d70e-7c3b-423c-aee7-e222164cdee9
-struct FermiHubbardData{T}
-    GL::T
-    GG::T
-    FL::T
-    FG::T
-
-    ΣNCA_up_L::T
-    ΣNCA_up_G::T
-    ΣNCA_down_L::T
-    ΣNCA_down_G::T
-
-    # Initialize problem
-    function FermiHubbardData(GL::T, GG::T, FL::T, FG::T) where {T}
-        new{T}(GL, GG, FL, FG, zero(GL), zero(GG), zero(FL), zero(FG))
-    end
-end
-
-# ╔═╡ fc979ae4-1421-47a2-b8f4-ca69cbca2a3d
-function integrate(times::Vector, t1, t2, i, j, A::GreenFunction, B::GreenFunction)
-    retval = zero(A[i,j])
-
-    rold = zero(retval)
-    rnew = zero(retval)
-
-    LinearAlgebra.mul!(rnew, view(A.data, :, :, t1, min(i,j)), view(B.data, :, :, min(i, j), t2))
-
-    @inbounds @fastmath @simd for k = min(i, j):(max(i, j)-1)
-        rold, rnew = rnew, rold # no data transfer
-        LinearAlgebra.mul!(rnew, view(A.data, :, :, t1, k+1), view(B.data, :, :, k+1, t2))
-
-        @. retval += (times[k+1] - times[k]) * (rnew + rold)
-    end
-
-    return 1 // 2 * sign(j - i) * retval
+# ╔═╡ 44be91b7-74a0-4e47-96a9-9a423bc7fbb1
+begin
+	function integrate1(hs::Vector, t1, t2, A::GreenFunction, B::GreenFunction, C::GreenFunction; tmax=t1)
+	    retval = zero(A[t1,t1])
+	
+	    @inbounds for k in 1:tmax
+	        @views LinearAlgebra.mul!(retval, A[t1, k] - B[t1, k], C[k, t2], hs[k], 1.0)
+	    end
+	    return retval
+	end
+	
+	function integrate2(hs::Vector, t1, t2, A::GreenFunction, B::GreenFunction, C::GreenFunction; tmax=t2)
+	    retval = zero(A[t1,t1])
+	
+	    @inbounds for k in 1:tmax
+	        @views LinearAlgebra.mul!(retval, A[t1, k], B[k, t2] - C[k, t2], hs[k], 1.0)
+	    end
+	    return retval
+	end
 end;
+
+# ╔═╡ 582a1fa3-bb83-4751-8feb-3c1ad577aed6
+begin
+	Base.@kwdef struct FermiHubbardModel
+	    U
+	    
+	    # 8-site 3D cubic lattice
+	    H = begin
+	        h = BlockArray{ComplexF64}(undef_blocks, [4, 4], [4, 4])
+	        diag_block = [0 -1 0 -1; -1 0 -1 0; 0 -1 0 -1; -1 0 -1 0]
+	        setblock!(h, diag_block, 1, 1)
+	        setblock!(h, diag_block, 2, 2)
+	        setblock!(h, Diagonal(-1 .* ones(4)), 1, 2)
+	        setblock!(h, Diagonal(-1 .* ones(4)), 2, 1)
+	
+	        full_h = BlockArray{ComplexF64}(undef_blocks, [8, 8], [8, 8])
+	        setblock!(full_h, h |> Array, 1, 1)
+	        setblock!(full_h, h |> Array, 2, 2)
+	        setblock!(full_h, zeros(ComplexF64, 8, 8), 1, 2)
+	        setblock!(full_h, zeros(ComplexF64, 8, 8), 2, 1)
+	        
+	        full_h |> Array
+	    end
+	    
+	    H1 = H[1:8, 1:8]
+	    H2 = H[1 + 8:2 * 8, 1 + 8:2 * 8]
+	end
+	
+	struct FermiHubbardData{T}
+	    GL::T
+	    GG::T
+	    FL::T
+	    FG::T
+	
+	    ΣNCA_up_L::T
+	    ΣNCA_up_G::T
+	    ΣNCA_down_L::T
+	    ΣNCA_down_G::T
+	
+	    # Initialize problem
+	    function FermiHubbardData(GL::T, GG::T, FL::T, FG::T) where {T}
+	        new{T}(GL, GG, FL, FG, zero(GL), zero(GG), zero(FL), zero(FG))
+	    end
+	end
+end
 
 # ╔═╡ fce4c81d-3091-41cf-8005-c54bff63c825
 begin
-	function fv!(model, data, out, times, t, t′)
+	function fv!(model, data, out, times, h1, h2, t, t′)
 	    (; GL, GG, FL, FG, ΣNCA_up_L, ΣNCA_up_G, ΣNCA_down_L, ΣNCA_down_G) = data
 	    (; H1, H2, U) = model
 	
 	    # real-time collision integral
-	    ∫dt(x...) = integrate(times, t, t′, x...)
+	    ∫dt1(A,B,C) = integrate1(h1, t, t′, A, B, C)#sum(h1[s] * ((A[t, s] - B[t, s]) * C[s, t′]) for s in 1:t)
+	    ∫dt2(A,B,C) = integrate2(h2, t, t′, A, B, C)#sum(h2[s] * (A[t, s] * (B[s, t′] - C[s, t′])) for s in 1:t′)
 
 		U_ = U((times[t] + times[t′])/2)
 		
@@ -127,30 +131,30 @@ begin
 	    ΣHF_down(t, t′) = im * U_ * Diagonal(GL[t, t])
 	    
 	    out[1] = -1.0im * ((H1 + ΣHF_up(t, t′)) * GL[t, t′] + 
-	            ∫dt(1, t, ΣNCA_up_G, GL) + ∫dt(t, t′, ΣNCA_up_L, GL) - ∫dt(1, t′, ΣNCA_up_L, GG)
-	        )
+            ∫dt1(ΣNCA_up_G, ΣNCA_up_L, GL) + ∫dt2(ΣNCA_up_L, GL, GG)
+        )
 	
 	    out[2] = -1.0im * ((H1 + ΣHF_up(t, t′)) * GG[t, t′] + 
-	            ∫dt(t′, t, ΣNCA_up_G, GG) - ∫dt(1, t, ΣNCA_up_L, GG) + ∫dt(1, t′, ΣNCA_up_G, GL)
-	        )
+            ∫dt1(ΣNCA_up_G, ΣNCA_up_L, GG) + ∫dt2(ΣNCA_up_G, GL, GG)
+        )
 	
 	    out[3] = -1.0im * ((H2 + ΣHF_down(t, t′)) * FL[t, t′] + 
-	            ∫dt(1, t, ΣNCA_down_G, FL) + ∫dt(t, t′, ΣNCA_down_L, FL) - ∫dt(1, t′, ΣNCA_down_L, FG)
-	        )
+            ∫dt1(ΣNCA_down_G, ΣNCA_down_L, FL) + ∫dt2(ΣNCA_down_L, FL, FG)
+        )
 	
 	    out[4] = -1.0im * ((H2 + ΣHF_down(t, t′)) * FG[t, t′] +
-	            ∫dt(t′, t, ΣNCA_down_G, FG) - ∫dt(1, t, ΣNCA_down_L, FG) + ∫dt(1, t′, ΣNCA_down_G, FL)
-	        )
+            ∫dt1(ΣNCA_down_G, ΣNCA_down_L, FG) + ∫dt2(ΣNCA_down_G, FL, FG)
+        )    
 	
 	    return out
 	end
 	
-	function fd!(model, data, out, times, t, t′)
-	    fv!(model, data, out, times, t, t)
+	function fd!(model, data, out, times, h1, h2, t, t′)
+	    fv!(model, data, out, times, h1, h2, t, t)
 	    out .-= adjoint.(out)
 	end
 	
-	function self_energies!(model, data, times, t, t′)
+	function self_energies!(model, data, times, h1, h2, t, t′)
 	    (; GL, GG, FL, FG, ΣNCA_up_L, ΣNCA_up_G, ΣNCA_down_L, ΣNCA_down_G) = data
 	    (; U) = model
 	
@@ -169,7 +173,7 @@ begin
 	    ΣNCA_down_L[t, t′] = U_^2 .* FL[t, t′] .* GL[t, t′] .* transpose(GG[t′, t])
 	    ΣNCA_down_G[t, t′] = U_^2 .* FG[t, t′] .* GG[t, t′] .* transpose(GL[t′, t])
 	end
-end
+end;
 
 # ╔═╡ 8d547d1b-b4b0-4467-a3aa-1499d358e5ee
 begin
@@ -199,15 +203,11 @@ begin
 	data = FermiHubbardData(GL, GG, FL, FG)
 	U₀ = 10.
 	tmax = 16;
-	model = FermiHubbardModel(U = t -> U₀ * (1 + exp(-10(t - 1.)))^(-1))
-	# model = FermiHubbardModel(U = t -> 0.5U₀ * (1 + sign(t-1)));
 	model = FermiHubbardModel(U = t -> -U₀ * [(-1)^k * (1 + exp(-20(t - 2k)))^(-1) for k in 1:tmax-1] |> sum);
-	# model = FermiHubbardModel(U = t -> -0.5U₀ * [(-1)^k * (1 + sign(t-k)) for k in 1:tmax-1] |> sum);
-	# model = FermiHubbardModel(U = t -> 0.);
-end
+end;
 
 # ╔═╡ 96571bb6-8413-4e52-9d96-efdabe6ac864
-begin
+let
 	t_vals = 0:0.01:tmax
 	fig = figure(figsize=(3, 2))
 	plot(t_vals, model.U.(t_vals))
@@ -221,7 +221,7 @@ end
 begin
 	atol = 1e-5
 	rtol = 1e-3
-end
+end;
 
 # ╔═╡ b3722fac-563c-4e79-8848-09103bb8c00a
 @time sol = kbsolve!(
@@ -232,6 +232,7 @@ end
     callback = (x...) -> self_energies!(model, data, x...),
     atol = atol,
     rtol = rtol,
+	stop = x -> (println("t: $(x[end])"); false)
 );
 
 # ╔═╡ cc88f5dd-4999-4db3-b675-e3003c209690
@@ -319,12 +320,11 @@ end
 # ╔═╡ Cell order:
 # ╠═c925a3be-ab56-11ec-1b59-9d92ed462b9b
 # ╟─188dbc64-b2f4-4486-a849-9dcf1cd5cb4a
-# ╠═582a1fa3-bb83-4751-8feb-3c1ad577aed6
-# ╠═bdf0d70e-7c3b-423c-aee7-e222164cdee9
-# ╠═fce4c81d-3091-41cf-8005-c54bff63c825
-# ╟─fc979ae4-1421-47a2-b8f4-ca69cbca2a3d
+# ╠═44be91b7-74a0-4e47-96a9-9a423bc7fbb1
+# ╟─582a1fa3-bb83-4751-8feb-3c1ad577aed6
+# ╟─fce4c81d-3091-41cf-8005-c54bff63c825
 # ╠═8d547d1b-b4b0-4467-a3aa-1499d358e5ee
-# ╠═96571bb6-8413-4e52-9d96-efdabe6ac864
+# ╟─96571bb6-8413-4e52-9d96-efdabe6ac864
 # ╠═1fc3b692-5989-4961-89a2-a229682d461f
 # ╠═b3722fac-563c-4e79-8848-09103bb8c00a
 # ╠═cc88f5dd-4999-4db3-b675-e3003c209690
