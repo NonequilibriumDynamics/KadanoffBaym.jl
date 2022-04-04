@@ -3,12 +3,12 @@
   atol = 1e-7
   rtol = 1e-5
 
-  function fv!(out, ts, t, t′)
+  function fv!(out, ts, h1, h2, t, t′)
     out[1] = 1im * L[t, t′]
     out[2] = 1im * G[t, t′] - λ * L[t, t′]
   end
 
-  function fd!(out, ts, t, t′)
+  function fd!(out, ts, h1, h2, t, t′)
     out[1] = zero(out[1])
     out[2] = zero(out[2])
   end
@@ -29,35 +29,30 @@
   end
 
   @testset begin
-    @test G[:, 1] ≈ [sol1(t1, L[1, 1], G[1, 1]) for t1 in kb.t] atol = 1e1atol rtol = 1e1rtol
-    @test L[:, 1] ≈ [sol2(t1, L[1, 1], G[1, 1]) for t1 in kb.t] atol = 1e1atol rtol = 1e1rtol
+    @test G[:, 1] ≈ [sol1(t1, L[1, 1], G[1, 1]) for t1 in kb.t] atol = atol rtol = rtol
+    @test L[:, 1] ≈ [sol2(t1, L[1, 1], G[1, 1]) for t1 in kb.t] atol = atol rtol = rtol
   end
 end
 
 @testset "1-time Volterra benchmark" begin
-  atol = 1e-7
-  rtol = 1e-5
+  atol = 1e-6
+  rtol = 1e-3
 
-  function kv1!(out, times, t, t′, s)
-    out[1] = G[t′, s]
+  function fv!(out, times, h1, h2, t, t′)
+    I = sum(h1[s] * G[t′, s] for s in eachindex(h1))
+    out[1] = (1 - I)
   end
-  function kd1!(out, times, t, t′, s)
-    out[1] = zero(out[1])
-  end
-  function fv!(out, v1, v2, times, t, t′)
-    out[1] = (1 - v1[1])
-  end
-  function fd!(out, v1, v2, times, t, t′)
+  function fd!(out, times, h1, h2, t, t′)
     out[1] = zero(out[1])
   end
 
   G = GreenFunction(ones(1, 1), Symmetrical)
 
-  kb = kbsolve!(fv!, fd!, [G], (0.0, 30.0); atol=atol, rtol=rtol, (kv1!)=kv1!, (kd1!)=kd1!)
+  kb = kbsolve!(fv!, fd!, [G], (0.0, 30.0); atol=atol, rtol=rtol)
 
   sol(t) = cos(t) + sin(t)
 
-  @test G[:, 1] ≈ [sol(t1) for t1 in kb.t] atol = 1e1atol rtol = 1e1rtol
+  @test G[:, 1] ≈ [sol(t1) for t1 in kb.t] atol = atol rtol = rtol
 end
 
 @testset "2-time benchmark" begin
@@ -65,11 +60,11 @@ end
   atol = 1e-8
   rtol = 1e-5
 
-  function fv!(out, ts, t, t′)
+  function fv!(out, ts, h1, h2, t, t′)
     out[1] = -1im * λ * cos(λ * (ts[t] - ts[t′])) * L[t, t′]
   end
 
-  function fd!(out, ts, t, t′)
+  function fd!(out, ts, h1, h2, t, t′)
     out[1] = zero(out[1])
   end
 
@@ -86,22 +81,17 @@ end
   atol = 1e-8
   rtol = 1e-5
 
-  function kv1!(out, times, t, t′, s)
-    out[1] = s >= t′ ? G[t′, s] : 0.0
+  function fv!(out, times, h1, h2, t, t′)
+    I = sum(h1[s] * (s >= t′ ? G[t′, s] : 0.0) for s in eachindex(h1))
+    out[1] = (1 - I)
   end
-  function kd1!(out, times, t, t′, s)
-    out[1] = zero(out[1])
-  end
-  function fv!(out, v1, v2, times, t, t′)
-    out[1] = (1 - v1[1])
-  end
-  function fd!(out, v1, v2, times, t, t′)
+  function fd!(out, times, h1, h2, t, t′)
     out[1] = zero(out[1])
   end
 
   G = GreenFunction(ones(1, 1), Symmetrical)
 
-  kb = kbsolve!(fv!, fd!, [G], (0.0, 1.0); atol=atol, rtol=rtol, (kv1!)=kv1!, (kd1!)=kd1!)
+  kb = kbsolve!(fv!, fd!, [G], (0.0, 1.0); atol=atol, rtol=rtol)
 
   function sol(t)
     return cos(t) + sin(t)

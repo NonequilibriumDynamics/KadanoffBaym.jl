@@ -69,29 +69,44 @@ function wigner_transform(x::AbstractMatrix; ts=1:size(x, 1), fourier=true)
     return x_W, (τs, ts)
   else
     ωs = ft(τs, τs)[1]
-    x_W̃ = mapslices(x -> ft(τs, x; mode=+1)[2], x_W; dims=1)
-    
-    return x_W̃, (ωs, ts)
+    x_Ŵ = mapslices(x -> ft(τs, x; inverse = false)[2], x_W; dims=1)
+
+    return x_Ŵ, (ωs, ts)
   end
 end
 
-"""Interpolates `x` on an equidistant mesh with the same boundaries and length as `ts` and calls [`wigner_transform`](@ref)"""
+"""
+    wigner_transform_itp(x::AbstractMatrix, ts::Vector; fourier=true)
+
+Interpolates `x` on an equidistant mesh with the same boundaries and length as `ts` and calls [`wigner_transform`](@ref)
+"""
 function wigner_transform_itp(x::AbstractMatrix, ts::Vector; fourier=true)
   ts_lin = range(first(ts), last(ts); length=length(ts))
   itp = interpolate((ts, ts), x, Gridded(Linear()))
   return wigner_transform([itp(t1, t2) for t1 in ts_lin, t2 in ts_lin]; ts=ts_lin, fourier=fourier)
 end
 
-""" Fourier transform """
-function ft(xs, ys; mode = +1)
+""" 
+    ft(xs, ys; inverse = false)
+
+Fourier transform of the points `(xs, ys)`:
+
+if `inverse`
+
+``ŷ(t) = ∫dω/(2π) y(ω) e^{- i ω t}``
+
+else
+
+``ŷ(ω) = ∫dt y(t) e^{+ i ω t}``
+
+Returns a tuple of the Fourier transformed points `(x̂s, ŷs)`
+"""
+function ft(xs, ys; inverse::Bool = false)
   @assert issorted(xs)
 
   L = length(xs)
   dx = xs[2] - xs[1]
-  
-  # FFT
-  ŷs = (mode == -1 ? fft(ys) : ifft(ys))
-  
+
   # Because the FFT calculates the transform as
   #   ỹ_k = \sum_j e^{±2pi i j k/n} y_j, from j=0 to j=n-1,
   # we need to transform this into the time and frequency units, 
@@ -99,7 +114,10 @@ function ft(xs, ys; mode = +1)
   x̂s = fftfreq(L, 2π / dx)
 
   # The resulting Fourier transform also picks up a phase
-  ℯⁱᵠ = (mode == -1 ? 1 : L) * dx * exp.(mode * 1.0im * xs[1] .* x̂s) 
+  ℯⁱᵠ = (inverse ? 1 / (2π) : L) * dx * exp.((inverse ? -1.0 : 1.0) * im * xs[1] .* x̂s) 
 
-  return circshift(x̂s, L ÷ 2), circshift(ℯⁱᵠ .* ŷs, L ÷ 2)
+  # FFT
+  ŷs = ℯⁱᵠ .* (inverse ? fft(ys) : ifft(ys))
+
+  return circshift(x̂s, L ÷ 2), circshift(ŷs, L ÷ 2)
 end

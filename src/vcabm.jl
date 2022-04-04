@@ -25,29 +25,12 @@ mutable struct VCABMCache{T,U} <: OrdinaryDiffEqMutableCache
   end
 end
 
-mutable struct VCABMVolterraCache{T,U}
-  f_prev::U
-
-  ϕ_n::Vector{U}
-  ϕ_np1::Vector{U}
-  ϕstar_n::Vector{U}
-  ϕstar_nm1::Vector{U}
-
-  gs::Vector{Vector{T}} # gⱼ(tₙ) for all n
-  ks::Vector{Int}       # kₙ for all n
-
-  function VCABMVolterraCache{T}(kmax, f_prev::U) where {T,U}
-    return new{T,typeof(f_prev)}(f_prev, [zero.(f_prev) for _ in 1:(kmax + 1)], [zero.(f_prev) for _ in 1:(kmax + 2)],
-                                 [zero.(f_prev) for _ in 1:(kmax + 1)], [zero.(f_prev) for _ in 1:(kmax + 1)], [zeros(T, kmax + 1)], [1])
-  end
-end
-
 # Explicit Adams: Section III.5 Eq. (5.5)
 function predict!(cache::VCABMCache, times)
-  @unpack u_prev, u_next, g, ϕstar_n, k = cache
+  (; u_prev, u_next, g, ϕstar_n, k) = cache
   @inbounds begin
-    ϕ_and_ϕstar!(cache, times, k + 1)
-    g_coeffs!(cache, times, k + 1)
+    ϕ_and_ϕstar!(cache, times, k + 1 == length(times) ? k : k + 1)
+    g_coeffs!(cache, times, k + 1 == length(times) ? k : k + 1)
     @. u_next = muladd(g[1], ϕstar_n[1], u_prev)
     for i in 2:(k - 1)
       @. u_next = muladd(g[i], ϕstar_n[i], u_next)
@@ -58,7 +41,7 @@ end
 
 # Implicit Adams: Section III.5 Eq (5.7)
 function correct!(cache::VCABMCache, f)
-  @unpack u_next, g, ϕ_np1, ϕstar_n, k = cache
+  (; u_next, g, ϕ_np1, ϕstar_n, k) = cache
   @inbounds begin
     ϕ_np1!(cache, f(), k + 1)
     @. u_next = muladd(g[k], ϕ_np1[k], u_next)
@@ -67,12 +50,12 @@ function correct!(cache::VCABMCache, f)
 end
 
 # Control order: Section III.7 Eq. (7.7)
-function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol, norm=ODE_DEFAULT_NORM)
-  @unpack u_prev, u_next, g, ϕ_np1, ϕstar_n, k, u_erro = cache
+function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
+  (; u_prev, u_next, g, ϕ_np1, ϕstar_n, k, u_erro) = cache
   @inbounds begin
     # Calculate error: Section III.7 Eq. (7.3)
-    calculate_residuals!(u_erro, ϕ_np1[k + 1], u_prev, u_next, atol, rtol, norm, nothing)
-    cache.error_k = norm(g[k + 1] - g[k], nothing) * norm(u_erro, nothing)
+    calculate_residuals!(u_erro, ϕ_np1[k + 1], u_prev, u_next, atol, rtol, norm)
+    cache.error_k = norm(g[k + 1] - g[k]) * norm(u_erro)
 
     # Fail step: Section III.7 Eq. (7.4)
     if cache.error_k > one(cache.error_k)
@@ -84,17 +67,17 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol, norm=ODE_DEFAULT
     if length(times) <= 5 || k < 3
       cache.k = min(k + 1, 3, kmax)
     else
-      calculate_residuals!(u_erro, ϕ_np1[k], u_prev, u_next, atol, rtol, norm, nothing)
-      error_k1 = norm(g[k] - g[k - 1], nothing) * norm(u_erro, nothing)
-      calculate_residuals!(u_erro, ϕ_np1[k - 1], u_prev, u_next, atol, rtol, norm, nothing)
-      error_k2 = norm(g[k - 1] - g[k - 2], nothing) * norm(u_erro, nothing)
+      calculate_residuals!(u_erro, ϕ_np1[k], u_prev, u_next, atol, rtol, norm)
+      error_k1 = norm(g[k] - g[k - 1]) * norm(u_erro)
+      calculate_residuals!(u_erro, ϕ_np1[k - 1], u_prev, u_next, atol, rtol, norm)
+      error_k2 = norm(g[k - 1] - g[k - 2]) * norm(u_erro)
 
       if max(error_k2, error_k1) <= cache.error_k
         cache.k = k - 1
       else
         ϕ_np1!(cache, cache.f_prev, k + 2)
-        calculate_residuals!(u_erro, ϕ_np1[k + 2], u_prev, u_next, atol, rtol, norm, nothing)
-        error_kstar = norm((times[end] - times[end - 1]) * γstar[k + 2], nothing) * norm(u_erro, nothing)
+        calculate_residuals!(u_erro, ϕ_np1[k + 2], u_prev, u_next, atol, rtol, norm)
+        error_kstar = norm((times[end] - times[end - 1]) * γstar[k + 2]) * norm(u_erro)
         if error_kstar < cache.error_k
           cache.k = min(k + 1, kmax)
           cache.error_k = one(cache.error_k)   # constant dt
@@ -107,7 +90,7 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol, norm=ODE_DEFAULT
 end
 
 function extend!(cache::VCABMCache, times, fv!)
-  @unpack f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, k, error_k = cache
+  (; f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, k, error_k) = cache
   @inbounds begin
     t = length(times) - 1 # `t` from the last iteration
 
@@ -148,51 +131,9 @@ function extend!(cache::VCABMCache, times, fv!)
   end
 end
 
-function extend!(caches, times, f_vert)
-  extend!(caches[1], times, f_vert)
-
-  if caches[1].error_k > one(caches[1].error_k) || isnothing(caches[2])
-    return
-  end
-
-  @inbounds begin
-    caches[1].g = copy(caches[1].g)    # NOTE: unsafe trick. Create a new g and
-    push!(caches[2].gs, caches[1].g) # last element of gs now points to the new g
-    push!(caches[2].ks, caches[1].k)
-  end
-end
-
-function quadrature!(cache::VCABMVolterraCache, times, kernel!, boundary)
-  @inbounds begin
-    # result gets stored in f_prev
-    kernel!(1)
-
-    v_next = zero.(cache.f_prev)
-    for l in 2:boundary
-      g = cache.gs[l]
-      k = cache.ks[l]
-
-      # predict
-      ϕ_and_ϕstar!(cache, view(times, 1:l), k)
-      for i in 1:(k - 1)
-        @. v_next = muladd(g[i], cache.ϕstar_n[i], v_next)
-      end
-
-      # correct
-      kernel!(l) # result gets stored in f_prev
-      ϕ_np1!(cache, cache.f_prev, k)
-      @. v_next = muladd(g[k], cache.ϕ_np1[k], v_next)
-
-      # circular caches
-      cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-    end
-  end
-  return v_next
-end
-
 # Section III.5: Eq (5.9-5.10)
 function ϕ_and_ϕstar!(cache, times, k)
-  @unpack f_prev, ϕstar_nm1, ϕ_n, ϕstar_n = cache
+  (; f_prev, ϕstar_nm1, ϕ_n, ϕstar_n) = cache
   @inbounds begin
     t = reverse(times)
     β = one(eltype(times))
@@ -207,7 +148,7 @@ function ϕ_and_ϕstar!(cache, times, k)
 end
 
 function g_coeffs!(cache, times, k)
-  @unpack c, g = cache
+  (; c, g) = cache
   @inbounds begin
     t = reverse(times)
     dt = t[1] - t[2]
