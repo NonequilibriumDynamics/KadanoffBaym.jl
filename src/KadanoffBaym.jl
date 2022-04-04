@@ -7,7 +7,7 @@ using OrdinaryDiffEq: OrdinaryDiffEqMutableCache, γstar, ϕ_np1!
 using OrdinaryDiffEq.RecursiveArrayTools: VectorOfArray
 using QuadGK
 
-export GreenFunction, Symmetrical, SkewHermitian, OneTime
+export GreenFunction, Symmetrical, SkewHermitian
 export kbsolve!
 
 include("utils.jl")

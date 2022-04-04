@@ -15,13 +15,6 @@ Defined as
 struct SkewHermitian <: AbstractSymmetry end
 
 """
-Defined as
-
-    G(t) = G(t)
-"""
-struct OneTime <: AbstractSymmetry end
-
-"""
     GreenFunction(g::AbstractArray, s::AbstractSymmetry)
 
 A container interface with array indexing respecting some symmetry `s`.
@@ -74,9 +67,6 @@ Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,U}, v, I
     G.data[.., jj..., ts...] = v
     G.data[.., jj..., reverse(ts)...] = symmetry(G)(v)
   end
-end
-Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,OneTime}, v, I...) where {T,N,A}
-  return G.data[.., I] = v
 end
 
 for g in (:GreenFunction,)
