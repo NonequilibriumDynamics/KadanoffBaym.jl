@@ -89,10 +89,11 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
   end
 end
 
-function extend!(cache::VCABMCache, times, fv!)
-  (; f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, k, error_k) = cache
+function extend!(cache::VCABMCache, state, fv!)
+  (; f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, error_k) = cache
   @inbounds begin
-    t = length(times) - 1 # `t` from the last iteration
+    t = length(state.t) - 1 # `t` from the last iteration
+    k = isone(t) ? 0 : state.w.ks[end-1] # `k` from the last iteration
 
     if error_k > one(error_k)
       return
@@ -118,7 +119,7 @@ function extend!(cache::VCABMCache, times, fv!)
     # is smooth and the solver does not stall.
     for k′ in 1:k
       fv!(max(1, t - 1 - k + k′), t) # result is stored in f_next
-      ϕ_and_ϕstar!((f_prev=f_next[t, :], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
+      ϕ_and_ϕstar!((f_prev=f_next[t, :], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(state.t, 1:(t - k + k′)), k′)
       _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
     end
 
