@@ -18,17 +18,20 @@ struct SkewHermitian <: AbstractSymmetry end
     GreenFunction(g::AbstractArray, s::AbstractSymmetry)
 
 A container interface with array indexing respecting some symmetry `s`.
+The last 2 dimensions of `g` index time and can be resized with [`resize!`](@ref).
 
 # Notes
-When indexing with 2 indices `Symmetrical` or `SkewHermitian` `GreenFunction`s,
-the last 2 dimensions will be indexed. These last 2 dimensions can be resized with [`resize!`](@ref).
+Indexing works from right to left so indexing a Green function with just 2 indices
+is equivalent to indexing as `[:,:,...,:,i,j]`.
 
 # Examples
 ```julia-repl
-julia> time_dim = 1
+julia> time_dim = 3
 julia> spin_dim = 2
-julia> data = zeros(spin_dim, spin_dim, 1, 1)
+julia> data = zeros(spin_dim, spin_dim, time_dim, time_dim)
 julia> gf = GreenFunction(data, SkewHermitian)
+julia> gf[2,1] = ones(spin_dim, spin_dim)
+julia> gf
 ```
 """
 mutable struct GreenFunction{T,N,A,U<:AbstractSymmetry} <: AbstractArray{T,N}
@@ -53,19 +56,19 @@ end
 Base.copy(G::GreenFunction) = oftype(G, copy(G.data))
 Base.eltype(::GreenFunction{T}) where {T} = T
 
-@inline Base.getindex(::GreenFunction{T,N,A,<:Union{Symmetrical,SkewHermitian}}, I) where {T,N,A} = error("Single indexing not allowed")
-Base.@propagate_inbounds Base.getindex(G::GreenFunction, I...) = G.data[.., I...]
+@inline Base.getindex(::GreenFunction{T,N,A,U}, I) where {T,N,A,U} = error("Single indexing not allowed")
+Base.@propagate_inbounds Base.getindex(G::GreenFunction{T,N,A,U}, I::Vararg{T1,N1}) where {T,N,A,U,T1,N1} = G.data[ntuple(i -> Colon(), N-N1)..., I...]
 
-@inline Base.setindex!(::GreenFunction{T,N,A,<:Union{Symmetrical,SkewHermitian}}, v, I) where {T,N,A} = error("Single indexing not allowed")
-Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,U}, v, I...) where {T,N,A,U}
+@inline Base.setindex!(::GreenFunction{T,N,A,U}, v, I) where {T,N,A,U} = error("Single indexing not allowed")
+Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,U}, v, I::Vararg{T1,N1}) where {T,N,A,U,T1,N1}
   ts = last2(I)
   jj = front2(I)
 
   if ==(ts...)
-    G.data[.., jj..., ts...] = v
+    G.data[ntuple(i -> Colon(), N-N1)..., jj..., ts...] = v
   else
-    G.data[.., jj..., ts...] = v
-    G.data[.., jj..., reverse(ts)...] = symmetry(G)(v)
+    G.data[ntuple(i -> Colon(), N-N1)..., jj..., ts...] = v
+    G.data[ntuple(i -> Colon(), N-N1)..., jj..., reverse(ts)...] = symmetry(G)(v)
   end
 end
 
@@ -107,14 +110,14 @@ function Base.show(io::IO, x::GreenFunction)
   return show(io, x.data)
 end
 
-Base.resize!(A::GreenFunction, t::Int) = A.data = _resize!(A.data, t)
+Base.resize!(A::GreenFunction, t::Int) = (A.data = _resize!(A.data, t); A)
 
 function _resize!(a::Array{T,N}, t::Int) where {T,N}
   a′ = Array{T,N}(undef, front2(size(a))..., t, t)
 
   k = min(last(size(a)), t)
   for t in 1:k, t′ in 1:k
-    a′[.., t′, t] = a[.., t′, t]
+    a′[ntuple(i -> Colon(), N-2)..., t′, t] = a[ntuple(i -> Colon(), N-2)..., t′, t]
   end
 
   return a′

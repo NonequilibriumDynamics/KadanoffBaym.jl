@@ -1,5 +1,4 @@
 using KadanoffBaym
-using EllipsisNotation
 using Test
 
 @testset "All tests" begin
