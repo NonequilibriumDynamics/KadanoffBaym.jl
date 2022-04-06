@@ -24,10 +24,10 @@ with [`resize!`](@ref).
 The array `g` is not restricted to being contiguous. For example, `g` can have
 `Matrix{T}`, `Array{T,4}`, `Matrix{SparseMatrixCSC{T}}`, etc as its type.
 
-If the base [`symmetry`](@ref) rule `s` is not appropriate for the `g` chosen, it can 
-be extended via multiple dispatch
+Custom symmetries can be implemented via multiple dispatch
 ```julia-repl
-julia> @inline KadanoffBaym.symmetry(::GreenFunction{MyCrazyArray,N,A,SkewHermitian}) where {T, A} = conj
+julia> struct MySymmetry <: KadanoffBaym.AbstractSymmetry end
+julia> @inline KadanoffBaym.symmetry(::GreenFunction{T,N,A,MySymmetry}) where {T,N,A} = conj
 ```
 
 # Notes
