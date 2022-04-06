@@ -17,21 +17,42 @@ struct SkewHermitian <: AbstractSymmetry end
 """
     GreenFunction(g::AbstractArray, s::AbstractSymmetry)
 
-A container interface with array indexing respecting some symmetry `s`.
-The last 2 dimensions of `g` index time and can be resized with [`resize!`](@ref).
+A container interface for `g` with array indexing respecting some symmetry rule `s`.
+Because of that, `g` must be square in its last 2 dimensions, which can be resized 
+with [`resize!`](@ref).
+
+The array `g` is not restricted to being contiguous. For example, `g` can have
+`Matrix{T}`, `Array{T,4}`, `Matrix{SparseMatrixCSC{T}}`, etc as its type.
+
+If the base [`symmetry`](@ref) rule `s` is not appropriate for the `g` chosen, it can 
+be extended via multiple dispatch
+```julia-repl
+julia> @inline KadanoffBaym.symmetry(::GreenFunction{MyCrazyArray,N,A,SkewHermitian}) where {T, A} = conj
+```
 
 # Notes
-Indexing works from right to left so indexing a Green function with just 2 indices
-is equivalent to indexing as `[:,:,...,:,i,j]`.
+Indexing with less indices than the dimension of `g` results in a right-to-left indexing
+```julia-repl
+julia> gf[i,j] == gf[:,:,...,:,i,j]
+julia> gf[i,j,k] == gf[:,:,...,:,i,j,k]
+```
 
 # Examples
+Showcasing the symmetry in indexing
 ```julia-repl
 julia> time_dim = 3
 julia> spin_dim = 2
 julia> data = zeros(spin_dim, spin_dim, time_dim, time_dim)
 julia> gf = GreenFunction(data, SkewHermitian)
 julia> gf[2,1] = ones(spin_dim, spin_dim)
-julia> gf
+julia> gf[1,2] == KadanoffBaym.symmetry(gf)(gf[2,1]) # g[1,2] was set with the rule `SkewHermitian`
+```
+
+Extending the symmetry
+```julia-repl
+julia> @inline KadanoffBaym.symmetry(::GreenFunction{T,N,A,SkewHermitian}) where {T,N,A} = x -> x # identity symmetry
+julia> gf[2,1] = 4ones(spin_dim, spin_dim)
+julia> gf[1,2]
 ```
 """
 mutable struct GreenFunction{T,N,A,U<:AbstractSymmetry} <: AbstractArray{T,N}
