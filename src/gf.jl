@@ -24,35 +24,41 @@ with [`resize!`](@ref).
 The array `g` is not restricted to being contiguous. For example, `g` can have
 `Matrix{T}`, `Array{T,4}`, `Matrix{SparseMatrixCSC{T}}`, etc as its type.
 
+# Notes
+The GreenFunction *does not* own `g`. Proper care must be taken when using multiple
+GreenFunctions since using the same array will result in unexpected behaviour
+```julia-repl
+julia> data = zeros(2,2)
+julia> g1 = GreenFunction(data, Symmetrical)
+julia> g2 = GreenFunction(data, Symmetrical)
+julia> g1[1,1] = 3
+julia> @show g2[1,1]
+julia> g1.data === g2.data # they share the same data
+```
+
+Indexing with less indices than the dimension of `g` results in a 
+"take-all-to-the-left" indexing
+```julia-repl
+julia> gf[i,j] == gf[:,:,...,:,i,j]
+julia> gf[i,j,k] == gf[:,:,...,:,i,j,k]
+```
+
 Custom symmetries can be implemented via multiple dispatch
 ```julia-repl
 julia> struct MySymmetry <: KadanoffBaym.AbstractSymmetry end
 julia> @inline KadanoffBaym.symmetry(::GreenFunction{T,N,A,MySymmetry}) where {T,N,A} = conj
 ```
 
-# Notes
-Indexing with less indices than the dimension of `g` results in a right-to-left indexing
-```julia-repl
-julia> gf[i,j] == gf[:,:,...,:,i,j]
-julia> gf[i,j,k] == gf[:,:,...,:,i,j,k]
-```
-
 # Examples
-Showcasing the symmetry in indexing
+`GreenFunction` simply takes some data `g` and embeds the symmetry `s` in its indexing
 ```julia-repl
 julia> time_dim = 3
 julia> spin_dim = 2
 julia> data = zeros(spin_dim, spin_dim, time_dim, time_dim)
-julia> gf = GreenFunction(data, SkewHermitian)
-julia> gf[2,1] = ones(spin_dim, spin_dim)
-julia> gf[1,2] == KadanoffBaym.symmetry(gf)(gf[2,1]) # g[1,2] was set with the rule `SkewHermitian`
-```
-
-Extending the symmetry
-```julia-repl
-julia> @inline KadanoffBaym.symmetry(::GreenFunction{T,N,A,SkewHermitian}) where {T,N,A} = x -> x # identity symmetry
-julia> gf[2,1] = 4ones(spin_dim, spin_dim)
-julia> gf[1,2]
+julia> gf = GreenFunction(data, Symmetrical)
+julia> gf[2,1] = rand(spin_dim, spin_dim)
+julia> @show gf[1,2]
+julia> @show KadanoffBaym.symmetry(gf)(gf[2,1])
 ```
 """
 mutable struct GreenFunction{T,N,A,U<:AbstractSymmetry} <: AbstractArray{T,N}
