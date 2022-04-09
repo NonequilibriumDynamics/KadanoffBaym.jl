@@ -1,10 +1,8 @@
 module KadanoffBaym
 
 import LinearAlgebra
-using EllipsisNotation
 using Requires
-using OrdinaryDiffEq: OrdinaryDiffEqMutableCache, γstar, ϕ_np1!
-using OrdinaryDiffEq.RecursiveArrayTools: VectorOfArray
+using OrdinaryDiffEq: OrdinaryDiffEqMutableCache, γstar, ϕ_np1!, VectorOfArray
 using QuadGK
 
 export GreenFunction, Symmetrical, SkewHermitian

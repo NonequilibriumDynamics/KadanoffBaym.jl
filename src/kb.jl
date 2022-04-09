@@ -3,31 +3,37 @@
 
 Solves the 2-time Voltera integro-differential equation
 
-``du/dt1 = fv(u,t1,t2) + ∫_{t0]^{t1} dτ K₁v[u,t1,t2,τ] + ∫_{t0}^{t2} dτ K₂v[u,t1,t2,τ]``
+``d/dt1 u(t1,t2) = fv(t1,t2) = v[u,t1,t2] + ∫_{t0]^{t1} dτ K1v[u,t1,t2,τ] + ∫_{t0}^{t2} dτ K2v[u,t1,t2,τ]``
 
-``du/dt2 = fh(u,t1,t2) + ∫_{t0}^{t1} dτ K₁h[u,t1,t2,τ] + ∫_{t0}^{t2} dτ K₂h[u,t1,t2,τ]``
+``d/dt2 u(t1,t2) = fh(t1,t2) = h[u,t1,t2] + ∫_{t0}^{t1} dτ K1h[u,t1,t2,τ] + ∫_{t0}^{t2} dτ K2h[u,t1,t2,τ]``
 
-for some initial condition `u0` from `t0` to `tmax`.
+for 2-point functions `u0` from `t0` to `tmax`.
 
 # Parameters
-  - `fv!(out, ts, w1, w2, t1, t2)`: the rhs of `du/dt1` where `wj` are weights to evaluate the 1st (j=1) and 2nd (j=2) integrals as `sum_i wj_i kj_i`. 
-    The output should be saved in-place in `out`, which has the same shape as `u0`. The full one-dimensional time-grid is given by `ts` and the indices in the 2-time plane are (`t1`, `t2`).
+  - `fv!(out, ts, w1, w2, t1, t2)`: the rhs of `d/dt1 u` at *indices* (`t1`, `t2`) 
+    in the time-grid (`ts` x `ts`). The weights `w1` and `w2` can be used to integrate
+    the Volterra kernels `K1v` and `K2v` as `sum_i w1_i K1v_i` and  `sum_i w2_i K2v_i`,
+    respectively. The output is saved in-place in `out`, which has the same shape as `u0`.
   - `fd!(out, ts, w1, w2, t1, t2)`: the rhs of `du/dt1 + du/dt2`
-  - `u0::Vector{<:GreenFunction}`: initial condition for the 2-point functions
-  - `(t0, tmax)`: the initial time(s) – can be a vector – and final time
+  - `u0::Vector{<:GreenFunction}`: list of 2-point functions to be time-stepped
+  - `(t0, tmax)`: a tuple with the initial time(s) `t0` – can be a vector of 
+    past times – and final time `tmax`
 
 # Optional keyword parameters
-  - `callback(ts, w1, w2, t1, t2)`: A function that gets called everytime the 2-point function at the indices (`t1`, `t2`) is updated
-  - `stop(ts)`: A function that gets called at every step that when evaluates to `true` stops the integration
-
-  For two approximations of the solution, the local error of the less precise is given by |y1 - y1'| < atol + rtol * max(y0,y1)
-  - `atol::Real`: Absolute tolerance (components with magnitude lower than `atol` do not guarantee number of local correct digits)
+  - `callback(ts, w1, w2, t1, t2)`: A function that gets called everytime the 
+    2-point function at *indices* (`t1`, `t2`) is updated. Can be used to update
+    functions which are not being integrated, such as self-energies.
+  - `stop(ts)`: A function that gets called at every time-step that stops the 
+    integration when it evaluates to `true`
+  - `atol::Real`: Absolute tolerance (components with magnitude lower than 
+    `atol` do not guarantee number of local correct digits)
   - `rtol::Real`: Relative tolerance (roughly the local number of correct digits)
   - `dtini::Real`: Initial step-size
   - `dtmax::Real`: Maximal step-size
-  - `qmax::Real`: Maximal step-size increase
-  - `qmin::Real`: Minimum step-size decrease
-  - `γ::Real`: Safety factor so that the error will be acceptable the next time with high probability
+  - `qmax::Real`: Maximum step-size factor when adjusting the time-step
+  - `qmin::Real`: Minimum step-size factor when adjusting the time-step
+  - `γ::Real`: Safety factor for the calculated time-step such that it is 
+    accepted with a higher probability
   - `kmax::Integer`: Maximum order of the adaptive Adams method
 
 # Notes
@@ -73,7 +79,7 @@ function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax);
     t1 = length(state.t)
 
     # Extend the caches to accomodate the new time column
-    extend!(cache, state.t, (t1, t2) -> fv!(view(cache.f_next, t2, :), state.t, state.w.ws[t1], state.w.ws[t2], t1, t2))
+    extend!(cache, state, (t1, t2) -> fv!(view(cache.f_next, t2, :), state.t, state.w.ws[t1], state.w.ws[t2], t1, t2))
 
     # Predictor
     u_next = predict!(cache, state.t)
