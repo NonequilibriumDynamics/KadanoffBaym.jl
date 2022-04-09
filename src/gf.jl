@@ -17,18 +17,48 @@ struct SkewHermitian <: AbstractSymmetry end
 """
     GreenFunction(g::AbstractArray, s::AbstractSymmetry)
 
-A container interface with array indexing respecting some symmetry `s`.
+A container interface for `g` with array indexing respecting some symmetry rule `s`.
+Because of that, `g` must be square in its last 2 dimensions, which can be resized 
+with [`resize!`](@ref).
+
+The array `g` is not restricted to being contiguous. For example, `g` can have
+`Matrix{T}`, `Array{T,4}`, `Matrix{SparseMatrixCSC{T}}`, etc as its type.
 
 # Notes
-When indexing with 2 indices `Symmetrical` or `SkewHermitian` `GreenFunction`s,
-the last 2 dimensions will be indexed. These last 2 dimensions can be resized with [`resize!`](@ref).
+The GreenFunction *does not* own `g`. Proper care must be taken when using multiple
+GreenFunctions since using the same array will result in unexpected behaviour
+```julia-repl
+julia> data = zeros(2,2)
+julia> g1 = GreenFunction(data, Symmetrical)
+julia> g2 = GreenFunction(data, Symmetrical)
+julia> g1[1,1] = 3
+julia> @show g2[1,1]
+julia> g1.data === g2.data # they share the same data
+```
+
+Indexing with less indices than the dimension of `g` results in a 
+"take-all-to-the-left" indexing
+```julia-repl
+julia> gf[i,j] == gf[:,:,...,:,i,j]
+julia> gf[i,j,k] == gf[:,:,...,:,i,j,k]
+```
+
+Custom symmetries can be implemented via multiple dispatch
+```julia-repl
+julia> struct MySymmetry <: KadanoffBaym.AbstractSymmetry end
+julia> @inline KadanoffBaym.symmetry(::GreenFunction{T,N,A,MySymmetry}) where {T,N,A} = conj
+```
 
 # Examples
+`GreenFunction` simply takes some data `g` and embeds the symmetry `s` in its indexing
 ```julia-repl
-julia> time_dim = 1
+julia> time_dim = 3
 julia> spin_dim = 2
-julia> data = zeros(spin_dim, spin_dim, 1, 1)
-julia> gf = GreenFunction(data, SkewHermitian)
+julia> data = zeros(spin_dim, spin_dim, time_dim, time_dim)
+julia> gf = GreenFunction(data, Symmetrical)
+julia> gf[2,1] = rand(spin_dim, spin_dim)
+julia> @show gf[1,2]
+julia> @show KadanoffBaym.symmetry(gf)(gf[2,1])
 ```
 """
 mutable struct GreenFunction{T,N,A,U<:AbstractSymmetry} <: AbstractArray{T,N}
@@ -53,19 +83,19 @@ end
 Base.copy(G::GreenFunction) = oftype(G, copy(G.data))
 Base.eltype(::GreenFunction{T}) where {T} = T
 
-@inline Base.getindex(::GreenFunction{T,N,A,<:Union{Symmetrical,SkewHermitian}}, I) where {T,N,A} = error("Single indexing not allowed")
-Base.@propagate_inbounds Base.getindex(G::GreenFunction, I...) = G.data[.., I...]
+@inline Base.getindex(::GreenFunction{T,N,A,U}, I) where {T,N,A,U} = error("Single indexing not allowed")
+Base.@propagate_inbounds Base.getindex(G::GreenFunction{T,N,A,U}, I::Vararg{T1,N1}) where {T,N,A,U,T1,N1} = G.data[ntuple(i -> Colon(), N-N1)..., I...]
 
-@inline Base.setindex!(::GreenFunction{T,N,A,<:Union{Symmetrical,SkewHermitian}}, v, I) where {T,N,A} = error("Single indexing not allowed")
-Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,U}, v, I...) where {T,N,A,U}
+@inline Base.setindex!(::GreenFunction{T,N,A,U}, v, I) where {T,N,A,U} = error("Single indexing not allowed")
+Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,U}, v, I::Vararg{T1,N1}) where {T,N,A,U,T1,N1}
   ts = last2(I)
   jj = front2(I)
 
   if ==(ts...)
-    G.data[.., jj..., ts...] = v
+    G.data[ntuple(i -> Colon(), N-N1)..., jj..., ts...] = v
   else
-    G.data[.., jj..., ts...] = v
-    G.data[.., jj..., reverse(ts)...] = symmetry(G)(v)
+    G.data[ntuple(i -> Colon(), N-N1)..., jj..., ts...] = v
+    G.data[ntuple(i -> Colon(), N-N1)..., jj..., reverse(ts)...] = symmetry(G)(v)
   end
 end
 
@@ -107,14 +137,14 @@ function Base.show(io::IO, x::GreenFunction)
   return show(io, x.data)
 end
 
-Base.resize!(A::GreenFunction, t::Int) = A.data = _resize!(A.data, t)
+Base.resize!(A::GreenFunction, t::Int) = (A.data = _resize!(A.data, t); A)
 
 function _resize!(a::Array{T,N}, t::Int) where {T,N}
   a′ = Array{T,N}(undef, front2(size(a))..., t, t)
 
   k = min(last(size(a)), t)
   for t in 1:k, t′ in 1:k
-    a′[.., t′, t] = a[.., t′, t]
+    a′[ntuple(i -> Colon(), N-2)..., t′, t] = a[ntuple(i -> Colon(), N-2)..., t′, t]
   end
 
   return a′

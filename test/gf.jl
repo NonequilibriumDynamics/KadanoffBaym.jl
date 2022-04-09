@@ -11,11 +11,11 @@ N = 10
   lgf[2, N] = v
   ggf[N, 2] = v
 
-  @test lgf.data[N, 2, ..] == -adjoint(v)
-  @test ggf.data[2, N, ..] == -adjoint(v)
+  @test lgf.data[N, 2] == -adjoint(v)
+  @test ggf.data[2, N] == -adjoint(v)
 
   @test lgf[2, N] == -adjoint(lgf.data[N, 2])
-  @test ggf.data[2, N, ..] == -adjoint(ggf[N, 2])
+  @test ggf.data[2, N] == -adjoint(ggf[N, 2])
 end
 
 @testset "4D GF" begin
@@ -29,11 +29,11 @@ end
   lgf[2, N] = v
   ggf[N, 2] = v
 
-  @test lgf.data[.., N, 2] == -adjoint(v)
-  @test ggf.data[.., 2, N] == -adjoint(v)
+  @test lgf.data[:, :, N, 2] == -adjoint(v)
+  @test ggf.data[:, :, 2, N] == -adjoint(v)
 
-  @test lgf[2, N] == -adjoint(lgf.data[.., N, 2])
-  @test ggf.data[.., 2, N] == -adjoint(ggf[N, 2])
+  @test lgf[2, N] == -adjoint(lgf.data[:, :, N, 2])
+  @test ggf.data[:, :, 2, N] == -adjoint(ggf[N, 2])
 end
 
 @testset "Base functions & setindex!" begin
@@ -50,9 +50,9 @@ end
 @testset "setindex!" begin
   function setindexA(A::AbstractArray)
     for i in 1:N, j in 1:i
-      A[.., i, j] = b
+      A[:, :, i, j] = b
       if j != i
-        A[.., j, i] = -adjoint(b)
+        A[:, :, j, i] = -adjoint(b)
       end
     end
   end
@@ -69,8 +69,8 @@ end
   b = rand(ComplexF64, N, N)
 
   gf[1, 2] = b
-  data[.., 1, 2] = b
-  data[.., 2, 1] = -adjoint(b)
+  data[:, :, 1, 2] = b
+  data[:, :, 2, 1] = -adjoint(b)
   @test gf.data == data
 
   setindexA(data)

@@ -52,7 +52,7 @@ end
 
   sol(t) = cos(t) + sin(t)
 
-  @test G[:, 1] ≈ [sol(t1) for t1 in kb.t] atol = atol rtol = rtol
+  @test G[:, 1] ≈ [sol(t1) for t1 in kb.t] atol = atol rtol = 5e0rtol
 end
 
 @testset "2-time benchmark" begin
