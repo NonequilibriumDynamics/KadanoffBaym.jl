@@ -50,7 +50,7 @@ function correct!(cache::VCABMCache, f)
 end
 
 # Control order: Section III.7 Eq. (7.7)
-function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
+function adjust!(cache::VCABMCache, cache_v, times, f, f1, kmax, atol, rtol)
   (; u_prev, u_next, g, ϕ_np1, ϕstar_n, k, u_erro) = cache
   @inbounds begin
     # Calculate error: Section III.7 Eq. (7.3)
@@ -63,6 +63,9 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
     end
 
     cache.f_prev .= f()
+    if !isnothing(cache_v)
+      cache_v.f_prev .= f1()
+    end
 
     if length(times) <= 5 || k < 3
       cache.k = min(k + 1, 3, kmax)
@@ -76,6 +79,10 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
         cache.k = k - 1
       else
         ϕ_np1!(cache, cache.f_prev, k + 2)
+
+        if !isnothing(cache_v)
+          ϕ_np1!(cache_v, cache_v.f_prev, k + 2)
+        end
         calculate_residuals!(u_erro, ϕ_np1[k + 2], u_prev, u_next, atol, rtol, norm)
         error_kstar = norm((times[end] - times[end - 1]) * γstar[k + 2]) * norm(u_erro)
         if error_kstar < cache.error_k
@@ -86,6 +93,12 @@ function adjust!(cache::VCABMCache, times, f, kmax, atol, rtol)
     end
     @. cache.u_prev = cache.u_next
     cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
+
+    if !isnothing(cache_v)
+      cache_v.k = cache.k
+      @. cache_v.u_prev = cache_v.u_next
+      cache_v.ϕstar_nm1, cache_v.ϕstar_n = cache_v.ϕstar_n, cache_v.ϕstar_nm1
+    end
   end
 end
 
@@ -93,7 +106,7 @@ function extend!(cache::VCABMCache, state, fv!)
   (; f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, error_k) = cache
   @inbounds begin
     t = length(state.t) - 1 # `t` from the last iteration
-    k = isone(t) ? 0 : state.w.ks[end-1] # `k` from the last iteration
+    k = isone(cache.k) ? 0 : state.w.ks[end-1] # `k` from the last iteration
 
     if error_k > one(error_k)
       return

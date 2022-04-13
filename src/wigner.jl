@@ -114,10 +114,10 @@ function ft(xs, ys; inverse::Bool = false)
   x̂s = fftfreq(L, 2π / dx)
 
   # The resulting Fourier transform also picks up a phase
-  ℯⁱᵠ = (inverse ? 1 / (2π) : L) * dx * exp.((inverse ? -1.0 : 1.0) * im * xs[1] .* x̂s) 
+  ℯⁱᵠ = (inverse ? 1 / (2π) : 1.0) * dx * exp.((inverse ? -1.0 : 1.0) * im * xs[1] .* x̂s) 
 
   # FFT
-  ŷs = ℯⁱᵠ .* (inverse ? fft(ys) : ifft(ys))
+  ŷs = ℯⁱᵠ .* (inverse ? fft : bfft)(ys)
 
-  return circshift(x̂s, L ÷ 2), circshift(ŷs, L ÷ 2)
+  return fftshift(x̂s), fftshift(ŷs)
 end

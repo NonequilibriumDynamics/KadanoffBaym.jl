@@ -43,7 +43,8 @@ for 2-point functions `u0` from `t0` to `tmax`.
     presented in Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
     Solving Ordinary Differential Equations I: Nonstiff Problems
 """
-function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax); 
+function kbsolve!(fv!, fd!, u0::Vector{<:AbstractGreenFunction}, (t0, tmax); 
+                  f1! =nothing, v0::Vector=[],
                   callback=(x...)->nothing, stop=(x...)->false,
                   atol=1e-8, rtol=1e-6, dtini=0.0, dtmax=Inf, qmax=5, qmin=1 // 5, γ=9 // 10, kmax=12)
 
@@ -56,12 +57,17 @@ function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax);
   @assert last(t0) <= tmax "Only t0 <= tmax supported"
 
   # Holds the information about the integration
-  state = (u=u0, t=t0, w=VolterraWeights(t0))
+  state = (u=u0, v=v0, t=t0, w=VolterraWeights(t0))
 
   # Holds the information necessary to integrate
   cache = let
     t1 = length(state.t)
     VCABMCache{eltype(state.t)}(kmax, VectorOfArray([[u[t1, t2] for t2 in 1:t1] for u in state.u]))
+  end
+
+  cache_v = isempty(state.v) ? nothing : let
+    t1 = length(state.t)
+    VCABMCache{eltype(state.t)}(kmax, VectorOfArray([[v[t1],] for v in state.v]))
   end
 
   # The rhs is seen as a univariate problem
@@ -75,6 +81,15 @@ function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax);
 
   cache.f_prev .= f!(length(state.t))
 
+  function f1!_(t1)
+    f1!(view(cache_v.f_next, :), state.t, state.w.ws[length(state.t)], length(state.t))
+    return cache_v.f_next
+  end
+
+  if !isempty(state.v)
+    cache_v.f_prev .= f1!_(length(state.t))
+  end
+
   while timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ, stop)
     t1 = length(state.t)
 
@@ -84,17 +99,25 @@ function kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax);
     # Predictor
     u_next = predict!(cache, state.t)
     foreach((u, u′) -> foreach(t2 -> u[t1, t2] = u′[t2], 1:t1), state.u, u_next.u)
-    foreach(t2 -> callback(state.t, state.w.ws[t1], state.w.ws[t2], t1, t2), 1:t1)
+    if !isempty(state.v)
+      u_next = predict!(cache_v, state.t)
+      foreach((v, v′) -> v[t1] = v′[1], state.v, u_next.u)
+    end
+    foreach(t2 -> callback(state.t, state.w.ws[t1], state.w.ws[t2], t1, t2, state.w.ws), 1:t1)
 
     # Corrector
     u_next = correct!(cache, () -> f!(t1))
     foreach((u, u′) -> foreach(t2 -> u[t1, t2] = u′[t2], 1:t1), state.u, u_next.u)
-    foreach(t2 -> callback(state.t, state.w.ws[t1], state.w.ws[t2], t1, t2), 1:t1)
+    if !isempty(state.v)
+      u_next = correct!(cache_v, () -> f1!_(t1))
+      foreach((v, v′) -> v[t1] = v′[1], state.v, u_next.u)
+    end
+    foreach(t2 -> callback(state.t, state.w.ws[t1], state.w.ws[t2], t1, t2, state.w.ws), 1:t1)
 
     # Calculate error and adjust order
-    adjust!(cache, state.t, () -> f!(t1), kmax, atol, rtol)
+    adjust!(cache, cache_v, state.t, () -> f!(t1), () -> f1!_(t1), kmax, atol, rtol)
   end # timeloop!
-  return state
+  return (t=state.t, w=state.w)
 end
 
 # Controls the step size & resizes the Green functions if required
@@ -122,11 +145,16 @@ function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ,
 
   # Reached the end of the integration
   if iszero(dt) || stop(state.t)
-    foreach(u -> resize!(u, length(state.t)), state.u) # trim solution
+    # trim solution
+    foreach(u -> resize!(u, length(state.t)), state.u)
+    foreach(v -> resize!(v, length(state.t)), state.v)
     return false
   else
-    if length(state.t) == (last ∘ size ∘ last)(state.u) # resize solution
-      foreach(u -> resize!(u, length(state.t) + min(50, ceil(Int, (tmax - state.t[end]) / dt))), state.u)
+    if length(state.t) == (last ∘ size ∘ last)(state.u)
+      l = length(state.t) + min(50, ceil(Int, (tmax - state.t[end]) / dt))
+      # resize solution
+      foreach(u -> resize!(u, l), state.u)
+      foreach(v -> resize!(v, l), state.v)
     end
     push!(state.t, last(state.t) + dt)
     push!(state.w.ks, cache.k)

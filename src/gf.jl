@@ -1,16 +1,21 @@
 abstract type AbstractSymmetry end
+abstract type AbstractGreenFunction{T,N} <: AbstractArray{T,N} end
 
 """
+    Symmetrical
+
 Defined as
 
-    G(t,t') = G(t′,t)ᵀ
+``G(t,t') = G(t',t)^\\top``
 """
 struct Symmetrical <: AbstractSymmetry end
 
 """
+    SkewHermitian
+
 Defined as
 
-    G(t,t') = -G(t′,t)†
+``G(t,t') = -G(t',t)^\\dagger``
 """
 struct SkewHermitian <: AbstractSymmetry end
 
@@ -61,7 +66,7 @@ julia> @show gf[1,2]
 julia> @show KadanoffBaym.symmetry(gf)(gf[2,1])
 ```
 """
-mutable struct GreenFunction{T,N,A,U<:AbstractSymmetry} <: AbstractArray{T,N}
+mutable struct GreenFunction{T,N,A,U<:AbstractSymmetry} <: AbstractGreenFunction{T,N}
   data::A
 end
 
@@ -156,7 +161,7 @@ end
 Provides a different (but not necessarily more efficient) data storage for 
 elastic skew-Hermitian data
 """
-struct SkewHermitianArray{T,N} <: AbstractArray{T,N}
+struct SkewHermitianArray{T,N} <: AbstractGreenFunction{T,N}
   data::Vector{Vector{T}}
 
   function SkewHermitianArray(a::T) where {T<:Union{Number,AbstractArray}}
@@ -179,6 +184,8 @@ end
     a.data[j - i + 1][i] = -adjoint(v)
   end
 end
+
+Base.resize!(A::SkewHermitianArray, t::Int) = (_resize!(A, t); A)
 
 function _resize!(a::SkewHermitianArray{T}, t::Int) where {T}
   l = length(a)
