@@ -91,10 +91,16 @@ This is meant to be a community project and all contributions, via [issues](http
 
 If you use `KadanoffBaym.jl` in your research, please cite our work:
 ```
-@misc{2110.04793,
-    title={Adaptive Numerical Solution of Kadanoff-Baym Equations}, 
-    author={Francisco Meirinhos and Michael Kajan and Johann Kroha and Tim Bode},
-    year={2021},
-    eprint={2110.04793},
+@Article{10.21468/SciPostPhysCore.5.2.030,
+	title={{Adaptive Numerical Solution of Kadanoff-Baym Equations}},
+	author={Francisco Meirinhos and Michael Kajan and Johann Kroha and Tim Bode},
+	journal={SciPost Phys. Core},
+	volume={5},
+	issue={2},
+	pages={30},
+	year={2022},
+	publisher={SciPost},
+	doi={10.21468/SciPostPhysCore.5.2.030},
+	url={https://scipost.org/10.21468/SciPostPhysCore.5.2.030},
 }
 ```
