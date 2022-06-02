@@ -3,7 +3,7 @@
 
 ## Overview
 
-This software provides an _adaptive_ time-stepping algorithm for the solution of Kadanoff-Baym equations, two-time Volterra integro-differential equations. The code is written in [Julia](https://julialang.org).
+This software provides an [_adaptive_ time-stepping algorithm for the solution of Kadanoff-Baym equations](https://scipost.org/SciPostPhysCore.5.2.030). The code is written in [Julia](https://julialang.org).
 
 
 ## Installation
@@ -32,7 +32,7 @@ Importing the external `FFTW` and `Interpolations` packages will also export `wi
 
 Various examples of the algorithm in action are found in the [examples](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/tree/master/examples) folder, including the T-matrix approximation for the Fermi-Hubbard model.
 
-`KadanoffBaym.jl` is very easy use. For example, we can solve the tight-binding model in a few lines:
+`KadanoffBaym.jl` is very easy to use. For example, we can solve the tight-binding model in a few lines:
 
 
 ```julia
