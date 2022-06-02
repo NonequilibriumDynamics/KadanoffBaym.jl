@@ -1,6 +1,8 @@
 
 # KadanoffBaym.jl
 
+[![CI](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/workflows/CI/badge.svg)](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/actions?query=workflow%3ACI)
+
 ## Overview
 
 This software provides an [_adaptive_ time-stepping algorithm for the solution of Kadanoff-Baym equations](https://scipost.org/SciPostPhysCore.5.2.030). The code is written in [Julia](https://julialang.org).
