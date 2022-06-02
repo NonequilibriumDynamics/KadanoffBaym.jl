@@ -2,6 +2,7 @@
 # KadanoffBaym.jl
 
 [![CI](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/workflows/CI/badge.svg)](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/actions?query=workflow%3ACI)
+[![Codecov](https://codecov.io/gh/NonequilibriumDynamics/KadanoffBaym.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/NonequilibriumDynamics/KadanoffBaym.jl)
 
 ## Overview
 
