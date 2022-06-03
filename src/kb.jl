@@ -3,21 +3,22 @@
 
 Solves the 2-time Voltera integro-differential equation
 
-```math
-\\begin{aligned}
-\\frac{d}{dt_1} u(t_1,t_2) = f_v(t_1,t_2) &= v[u,t_1,t_2] + \\int_{t_0}^{t_1} d\\tau K_1^v[u,t_1,t_2,\\tau] + \\int_{t_0}^{t_2} d\\tau K_2^v[u,t_1,t_2,\\tau] \\\\
-\\frac{d}{dt_2} u(t_1,t_2) = f_h(t_1,t_2) &= h[u,t_1,t_2] + \\int_{t_0}^{t_1} d\\tau K_1^h[u,t_1,t_2,\\tau] + \\int_{t_0}^{t_2} d\\tau K_2^h[u,t_1,t_2,\\tau]
-\\end{aligned}
-```
+``
+du(t_1,t_2) / dt_1 = f_v(t_1,t_2) = v[u,t_1,t_2] + ∫_{t0}^{t1} dτ K_1^v[u,t_1,t_2,τ] + ∫_{t0}^{t2} dτ K_2^v[u,t_1,t_2,τ]
+``
+
+``
+du(t_1,t_2) / dt_2 = f_h(t_1,t_2) = h[u,t_1,t_2] + ∫_{t0}^{t1} dτ K_1^h[u,t_1,t_2,τ] + ∫_{t0}^{t2} dτ K_2^h[u,t_1,t_2,τ]
+``
 
 for 2-point functions `u0` from `t0` to `tmax`.
 
 # Parameters
   - `fv!(out, ts, w1, w2, t1, t2)`: The right-hand side of ``du/dt_1`` at *indices* (`t1`, `t2`) 
-    in the time-grid (`ts` x `ts`). The weights `w1` and `w2` can be used to integrate
+    on the time-grid (`ts` x `ts`). The weights `w1` and `w2` can be used to integrate
     the Volterra kernels `K1v` and `K2v` as `sum_i w1_i K1v_i` and  `sum_i w2_i K2v_i`,
     respectively. The output is saved in-place in `out`, which has the same shape as `u0`.
-  - `fd!(out, ts, w1, w2, t1, t2)`: The right-hand side of ``\\left(du/dt_1 + du/dt_2\\right)|_{t_2\\to t_1}``
+  - `fd!(out, ts, w1, w2, t1, t2)`: The right-hand side of ``(du/dt_1 + du/dt_2)|_{t_2 → t_1}``
   - `u0::Vector{<:GreenFunction}`: List of 2-point functions to be time-stepped
   - `(t0, tmax)`: A tuple with the initial time(s) `t0` – can be a vector of 
     past times – and final time `tmax`
