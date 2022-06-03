@@ -1,3 +1,3 @@
-using Documenter, KadanoffBaym
+using Documenter, KadanoffBaym, FFTW, Interpolations
 
-makedocs(sitename="KadanoffBaym.jl")
+makedocs(sitename="KadanoffBaym.jl", modules=[KadanoffBaym])
