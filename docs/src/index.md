@@ -1,9 +1,9 @@
-# Documentation
+# Welcome!
 
-KadanoffBaym.jl is the first fully *adaptive* solver for Kadanoff-Baym equations written in Julia. 
+`KadanoffBaym.jl` is the first fully *adaptive* solver for Kadanoff-Baym equations written in Julia. 
 
 !!! tip
-	To learn more about the solver and Kadanoff-Baym equations, have a look into our [accompanying paper](https://scipost.org/SciPostPhysCore.5.2.030).
+	To learn more about the solver and Kadanoff-Baym equations, have a look into our [accompanying paper](https://doi.org/10.21468/SciPostPhysCore.5.2.030).`
 
 ## Installation
 
@@ -13,11 +13,18 @@ To install, use Julia's built-in package manager
 julia> ] add KadanoffBaym
 ```
 
-The most recent version of `KadanoffBaym.jl` requires Julia v1.7 or later.
+The most recent version of `KadanoffBaym.jl` requires Julia `v1.7` or later.
 
 ## Examples
 
-For now, please see the [examples folder](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/tree/master/examples).
+To learn how to work with `KadanoffBaym.jl`, there are two options:
+
+- The [examples folder](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/tree/master/examples) of our repository, which contains notebooks for all of the systems studied in [our paper](https://doi.org/10.21468/SciPostPhysCore.5.2.030).
+
+- The examples section of this documentation. If you are interested in _quantum_ dynamics, we recommend you start with the [tight-binding model](@ref TightBinding). More advanced users can jump directly to [Fermi-Hubbard model part I](@ref FHM_I) about the _second Born approximation_. [Part II](@ref FHM_II) shows how to solve the more involved ``T``-matrix approximation. 
+
+!!! note
+	`KadanoffBaym.jl` can also be used to simulate _stochastic processes_. An introduction to this topic is given [here](StochasticProcesses).
 
 ## Library
 
