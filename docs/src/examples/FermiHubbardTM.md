@@ -129,6 +129,14 @@ function T_matrix!(model, data, times, h1, h2, t, t′)
     
     # The interaction varies as a function of the forward time (t+t')/2
     U_t = U((times[t] + times[t′])/2)
+    
+    # Set all Φs at the very first t′ since they are all known by then
+    if t′ == 1
+        for t′ in 1:t
+            ΦL[t, t′] = -1.0im .* GL_u[t, t′] .* GL_d[t, t′]
+            ΦG[t, t′] = -1.0im .* GG_u[t, t′] .* GG_d[t, t′]
+        end
+    end   
 
     # Solve VIEs implicitly
     TL[t, t′], TG[t, t′] = fixed_point([ΦL[t, t′], ΦG[t, t′]]; mixing=0.5, verbose=false) do x
