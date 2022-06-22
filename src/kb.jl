@@ -43,13 +43,13 @@ for 2-point functions `u0` from `t0` to `tmax`.
     presented in Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
     Solving Ordinary Differential Equations I: Nonstiff Problems
 """
-function kbsolve!(fv!, fd!, u0::Vector{<:AbstractGreenFunction}, (t0, tmax); 
+function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFunction}, (t0, tmax)::Tuple{Union{Real, Vector{<:Real}}, Real}; 
                   f1! =nothing, v0::Vector=[],
                   callback=(x...)->nothing, stop=(x...)->false,
                   atol=1e-8, rtol=1e-6, dtini=0.0, dtmax=Inf, qmax=5, qmin=1 // 5, γ=9 // 10, kmax=12)
 
   # Support for an initial time-grid
-  if isempty(size(t0))
+  if t0 isa Real
     t0 = [t0]
   else
     @assert issorted(t0) "Initial time-grid is not in ascending order"
@@ -57,7 +57,7 @@ function kbsolve!(fv!, fd!, u0::Vector{<:AbstractGreenFunction}, (t0, tmax);
   @assert last(t0) <= tmax "Only t0 <= tmax supported"
 
   # Holds the information about the integration
-  state = (u=u0, v=v0, t=t0, w=VolterraWeights(t0))
+  state = (u=u0, v=v0, t=t0, w=VolterraWeights(t0), start=[true])
 
   # Holds the information necessary to integrate
   cache = let
@@ -71,20 +71,22 @@ function kbsolve!(fv!, fd!, u0::Vector{<:AbstractGreenFunction}, (t0, tmax);
   end
 
   # The rhs is seen as a univariate problem
-  function f!(t1)
-    Threads.@threads for t2 in 1:(t1-1)
+  function f!(t1, tt=t1)
+    Threads.@threads for t2 in 1:(tt-1)
       fv!(view(cache.f_next, t2, :), state.t, state.w.ws[t1], state.w.ws[t2], t1, t2)
     end
-    fd!(view(cache.f_next, t1, :), state.t, state.w.ws[t1], state.w.ws[t1], t1, t1)
+    fd!(view(cache.f_next, tt, :), state.t, state.w.ws[t1], state.w.ws[t1], t1, t1)
     return cache.f_next
   end
-
-  cache.f_prev .= f!(length(state.t))
 
   function f1!_(t1)
     f1!(view(cache_v.f_next, :), state.t, state.w.ws[length(state.t)], length(state.t))
     return cache_v.f_next
   end
+
+  extend_cache!(cache, state, t1 -> f!(t1, length(state.t)), kmax)
+
+  cache.f_prev .= f!(length(state.t))
 
   if !isempty(state.v)
     cache_v.f_prev .= f1!_(length(state.t))
@@ -122,9 +124,10 @@ end
 
 # Controls the step size & resizes the Green functions if required
 function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ, stop)
-  if isone(length(state.t))
+  if isone(length(state.t)) || state.start[1]
     # Section II.4: Starting Step Size, Eq. (4.14)
     dt = iszero(dtini) ? initial_step(cache.f_prev, cache.u_prev, atol, rtol) : dtini
+    state.start[1] = false
   else
     # Section II.4: Automatic Step Size Control, Eq. (4.13)
     q = max(inv(qmax), min(inv(qmin), cache.error_k^(1 / (cache.k + 1)) / γ))
