@@ -84,8 +84,6 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
     return cache_v.f_next
   end
 
-  extend_cache!(cache, state, t1 -> f!(t1, length(state.t)), kmax)
-
   cache.f_prev .= f!(length(state.t))
 
   if !isempty(state.v)

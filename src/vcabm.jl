@@ -145,28 +145,6 @@ function extend!(cache::VCABMCache, state, fv!)
   end
 end
 
-function extend_cache!(cache::VCABMCache, state, f!, kmax)
-  (; f_next, ϕ_n, ϕstar_n, ϕstar_nm1) = cache
-  @inbounds begin
-    k = 4#kmax ÷ 2 + 1
-
-    for k′ in 1:k
-      t1 = length(state.t) - k + k′
-
-      state.w.ks[end-k+k′] = k′
-      state.w.ws[end-k+k′] = calculate_weights(view(state.t, 1:t1), view(state.w.ks, 1:(t1-1)), 1e-8, 1e-5)
-
-      f!(t1 - 1)
-      ϕ_and_ϕstar!((f_prev=cache.f_next, ϕ_n=cache.ϕ_n, ϕstar_n=cache.ϕstar_n, ϕstar_nm1=cache.ϕstar_nm1), view(state.t, 1:t1), k′)
-      cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-      
-    end
-    cache.k = k + 1
-    @assert state.w.ks[end] == k
-    @assert state.w.ks[end - 1] == k - 1
-  end
-end
-
 # Section III.5: Eq (5.9-5.10)
 function ϕ_and_ϕstar!(cache, times, k)
   (; f_prev, ϕstar_nm1, ϕ_n, ϕstar_n) = cache
