@@ -1,42 +1,46 @@
 
 # KadanoffBaym.jl
 
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://nonequilibriumdynamics.github.io/KadanoffBaym.jl/dev/)
+[![CI](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/workflows/CI/badge.svg)](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/actions?query=workflow%3ACI)
+[![codecov](https://codecov.io/gh/NonequilibriumDynamics/KadanoffBaym.jl/branch/master/graph/badge.svg?token=AAZVQLIKN2)](https://codecov.io/gh/NonequilibriumDynamics/KadanoffBaym.jl)
+
 ## Overview
 
-This software provides an _adaptive_ time-stepping algorithm for the solution of Kadanoff-Baym equations, two-time Volterra integro-differential equations. The code is written in [Julia](https://julialang.org).
+`KadanoffBaym.jl` is the first fully *adaptive* solver for Kadanoff-Baym equations written in Julia. To learn more about the solver and Kadanoff-Baym equations, have a look into our [accompanying paper](https://doi.org/10.21468/SciPostPhysCore.5.2.030).
 
 
 ## Installation
 
-To install, use Julia's built-in package manager
+To install, simply use Julia's built-in package manager
 
 ```julia
 julia> ] add KadanoffBaym
 ```
 
-The most recent version of `KadanoffBaym.jl` requires Julia v1.7 or later.
+The most recent version of `KadanoffBaym.jl` requires Julia `v1.7` or later.
 
 
 ## Documentation
 
-`KadanoffBaym.jl` was designed to be lean and simple and hence only exports a handful of functions, namely `GreenFunction` (together with two possible time symmetries, `Symmetrical` and `SkewHermitian`) and the integrator `kbsolve!`. The documentation for these can be accessed through Julia's built-in documenter
+Our documentation can be found [here](https://nonequilibriumdynamics.github.io/KadanoffBaym.jl).
 
-```julia
-julia> ? kbsolve!
-```
-
-Importing the external `FFTW` and `Interpolations` packages will also export `wigner_transform` and `wigner_transform_itp` for Wigner transformations.
+`KadanoffBaym.jl` was designed to be lean and simple, and hence only exports a handful of functions, namely the data structure [`GreenFunction`](https://nonequilibriumdynamics.github.io/KadanoffBaym.jl/dev/#KadanoffBaym.GreenFunction) and the integrator [`kbsolve!`](https://nonequilibriumdynamics.github.io/KadanoffBaym.jl/dev/#KadanoffBaym.kbsolve!-Tuple{Any,%20Any,%20Vector{%3C:GreenFunction},%20Any}).
 
 
 ## Examples
 
-Various examples of the algorithm in action are found in the [examples](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/tree/master/examples) folder, including the T-matrix approximation for the Fermi-Hubbard model.
+To learn how to work with `KadanoffBaym.jl`, there are two options:
 
-`KadanoffBaym.jl` is very easy use. For example, we can solve the tight-binding model in a few lines:
+- The [examples folder](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/tree/master/examples) of our repository, which contains notebooks for all of the systems studied in [our paper](https://doi.org/10.21468/SciPostPhysCore.5.2.030).
+
+- The examples section of our [documentation](https://nonequilibriumdynamics.github.io/KadanoffBaym.jl). If you are interested in _quantum_ dynamics, we recommend you start with the [tight-binding model](https://nonequilibriumdynamics.github.io/KadanoffBaym.jl/dev/examples/TightBindingModel/). More advanced users can jump directly to [Fermi-Hubbard model part I](https://nonequilibriumdynamics.github.io/KadanoffBaym.jl/dev/examples/FermiHubbard2B/) about the _second Born approximation_. [Part II](https://nonequilibriumdynamics.github.io/KadanoffBaym.jl/dev/examples/FermiHubbardTM/) shows how to solve the more involved ``T``-matrix approximation. `KadanoffBaym.jl` is versatile and can also be used to simulate _stochastic processes_. An introduction to this topic is given [here](https://nonequilibriumdynamics.github.io/KadanoffBaym.jl/dev/examples/StochasticProcesses/).
+
+`KadanoffBaym.jl` is very easy to use. For example, we can solve the tight-binding model in a few lines:
 
 
 ```julia
-using LinearAlgebra, KadanoffBaym
+using KadanoffBaym, LinearAlgebra
 
 # quantum numbers
 dim = 10
@@ -70,7 +74,7 @@ function fd!(out, times, h1, h2, t1, t2)
 end
 
 # call the solver
-sol = kbsolve!(fv!, fd!, [GL, GG], (0.0, 100.0); atol=1e-6, rtol=1e-3)
+sol = kbsolve!(fv!, fd!, [GL, GG], (0.0, 20.0); atol=1e-8, rtol=1e-6)
 ```
 
 
@@ -91,10 +95,16 @@ This is meant to be a community project and all contributions, via [issues](http
 
 If you use `KadanoffBaym.jl` in your research, please cite our work:
 ```
-@misc{2110.04793,
-    title={Adaptive Numerical Solution of Kadanoff-Baym Equations}, 
-    author={Francisco Meirinhos and Michael Kajan and Johann Kroha and Tim Bode},
-    year={2021},
-    eprint={2110.04793},
+@Article{10.21468/SciPostPhysCore.5.2.030,
+	title={{Adaptive Numerical Solution of Kadanoff-Baym Equations}},
+	author={Francisco Meirinhos and Michael Kajan and Johann Kroha and Tim Bode},
+	journal={SciPost Phys. Core},
+	volume={5},
+	issue={2},
+	pages={30},
+	year={2022},
+	publisher={SciPost},
+	doi={10.21468/SciPostPhysCore.5.2.030},
+	url={https://scipost.org/10.21468/SciPostPhysCore.5.2.030},
 }
 ```

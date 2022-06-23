@@ -3,20 +3,24 @@
 
 Solves the 2-time Voltera integro-differential equation
 
-``d/dt1 u(t1,t2) = fv(t1,t2) = v[u,t1,t2] + ∫_{t0]^{t1} dτ K1v[u,t1,t2,τ] + ∫_{t0}^{t2} dτ K2v[u,t1,t2,τ]``
+``
+du(t_1,t_2) / dt_1 = f_v(t_1,t_2) = v[u,t_1,t_2] + ∫_{t0}^{t1} dτ K_1^v[u,t_1,t_2,τ] + ∫_{t0}^{t2} dτ K_2^v[u,t_1,t_2,τ]
+``
 
-``d/dt2 u(t1,t2) = fh(t1,t2) = h[u,t1,t2] + ∫_{t0}^{t1} dτ K1h[u,t1,t2,τ] + ∫_{t0}^{t2} dτ K2h[u,t1,t2,τ]``
+``
+du(t_1,t_2) / dt_2 = f_h(t_1,t_2) = h[u,t_1,t_2] + ∫_{t0}^{t1} dτ K_1^h[u,t_1,t_2,τ] + ∫_{t0}^{t2} dτ K_2^h[u,t_1,t_2,τ]
+``
 
 for 2-point functions `u0` from `t0` to `tmax`.
 
 # Parameters
-  - `fv!(out, ts, w1, w2, t1, t2)`: the rhs of `d/dt1 u` at *indices* (`t1`, `t2`) 
-    in the time-grid (`ts` x `ts`). The weights `w1` and `w2` can be used to integrate
+  - `fv!(out, ts, w1, w2, t1, t2)`: The right-hand side of ``du/dt_1`` at *indices* (`t1`, `t2`) 
+    on the time-grid (`ts` x `ts`). The weights `w1` and `w2` can be used to integrate
     the Volterra kernels `K1v` and `K2v` as `sum_i w1_i K1v_i` and  `sum_i w2_i K2v_i`,
     respectively. The output is saved in-place in `out`, which has the same shape as `u0`.
-  - `fd!(out, ts, w1, w2, t1, t2)`: the rhs of `du/dt1 + du/dt2`
-  - `u0::Vector{<:GreenFunction}`: list of 2-point functions to be time-stepped
-  - `(t0, tmax)`: a tuple with the initial time(s) `t0` – can be a vector of 
+  - `fd!(out, ts, w1, w2, t1, t2)`: The right-hand side of ``(du/dt_1 + du/dt_2)|_{t_2 → t_1}``
+  - `u0::Vector{<:GreenFunction}`: List of 2-point functions to be time-stepped
+  - `(t0, tmax)`: A tuple with the initial time(s) `t0` – can be a vector of 
     past times – and final time `tmax`
 
 # Optional keyword parameters
@@ -40,8 +44,9 @@ for 2-point functions `u0` from `t0` to `tmax`.
   - Due to high memory and computation costs, `kbsolve!` mutates the initial condition `u0` 
     and only works with in-place rhs functions, unlike standard ODE solvers.
   - The Kadanoff-Baym timestepper is a 2-time generalization of the variable Adams method
-    presented in Ernst Hairer, Gerhard Wanner, and Syvert P Norsett
-    Solving Ordinary Differential Equations I: Nonstiff Problems
+    presented in E. Hairer, S. Norsett and G. Wanner, *Solving Ordinary Differential Equations I: Non-
+    stiff Problems*, vol. 8, Springer-Verlag Berlin Heidelberg, ISBN 978-3-540-56670-0,
+    [doi:10.1007/978-3-540-78862-1](https://doi.org/10.1007/978-3-540-78862-1) (1993).
 """
 function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFunction}, (t0, tmax)::Tuple{Union{Real, Vector{<:Real}}, Real}; 
                   f1! =nothing, v0::Vector=[],

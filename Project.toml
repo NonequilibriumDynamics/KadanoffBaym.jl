@@ -1,7 +1,7 @@
 name = "KadanoffBaym"
 uuid = "82532805-809c-4ef0-842b-4b00c5e9be5f"
-authors = ["Francisco Meirinhos, Tim Lappe"]
-version = "1.0.1"
+authors = ["Francisco Meirinhos, Tim Bode"]
+version = "1.1.0"
 
 [deps]
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
