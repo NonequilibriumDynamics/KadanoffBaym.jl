@@ -75,12 +75,12 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
     VCABMCache{eltype(state.t)}(kmax, VectorOfArray([[v[t1],] for v in state.v]))
   end
 
-  # The rhs is seen as a univariate problem
-  function f!(t1, tt=t1)
-    Threads.@threads for t2 in 1:(tt-1)
+  # The rhs is reshaped into a univariate problem
+  function f!(t1)
+    Threads.@threads for t2 in 1:(t1-1)
       fv!(view(cache.f_next, t2, :), state.t, state.w.ws[t1], state.w.ws[t2], t1, t2)
     end
-    fd!(view(cache.f_next, tt, :), state.t, state.w.ws[t1], state.w.ws[t1], t1, t1)
+    fd!(view(cache.f_next, t1, :), state.t, state.w.ws[t1], state.w.ws[t1], t1, t1)
     return cache.f_next
   end
 
@@ -96,6 +96,12 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
   end
 
   while timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ, stop)
+    tmp = cache.dts[kmax+1]
+    for i = kmax:-1:1
+      cache.dts[i+1] = cache.dts[i]
+    end
+    cache.dts[1] = state.t[end] - state.t[end-1]
+    
     t1 = length(state.t)
 
     # Extend the caches to accomodate the new time column
@@ -121,6 +127,14 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
 
     # Calculate error and adjust order
     adjust!(cache, cache_v, state.t, () -> f!(t1), () -> f1!_(t1), kmax, atol, rtol)
+
+    if cache.error_k > one(cache.error_k)
+      for i = 1:kmax
+        cache.dts[i] = cache.dts[i+1]
+      end
+      cache.dts[kmax+1] = tmp
+    end
+
   end # timeloop!
   return (t=state.t, w=state.w)
 end

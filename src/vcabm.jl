@@ -18,10 +18,15 @@ mutable struct VCABMCache{T,U} <: OrdinaryDiffEqMutableCache
   k::Int
   error_k::T
 
+  β::Vector{T}
+  dts::Vector{T}
+  ξ::T 
+  ξ0::T
+
   function VCABMCache{T}(kmax, u_prev::U) where {T,U}
     return new{T,typeof(u_prev)}(u_prev, zero.(u_prev), zero.(u_prev), zero.(u_prev), zero.(u_prev), [zero.(u_prev) for _ in 1:(kmax + 1)],
                                  [zero.(u_prev) for _ in 1:(kmax + 2)], [zero.(u_prev) for _ in 1:(kmax + 1)], [zero.(u_prev) for _ in 1:(kmax + 1)],
-                                 zeros(T, kmax + 1, kmax + 1), zeros(T, kmax + 1), 1, zero(T))
+                                 zeros(T, kmax + 1, kmax + 1), zeros(T, kmax + 1), 1, zero(T), zeros(T, kmax + 1), zeros(T, kmax + 1), zero(T), zero(T))
   end
 end
 
@@ -29,8 +34,9 @@ end
 function predict!(cache::VCABMCache, times)
   (; u_prev, u_next, g, ϕstar_n, k) = cache
   @inbounds begin
-    ϕ_and_ϕstar!(cache, times, k + 1 == length(times) ? k : k + 1)
-    g_coeffs!(cache, times, k + 1 == length(times) ? k : k + 1)
+    ϕ_and_ϕstar!(cache, cache.f_prev, k)
+    g_coefs!(cache, k + 1)
+    # g_coeffs!(cache, times, k + 1 == length(times) ? k : k + 1)
     @. u_next = muladd(g[1], ϕstar_n[1], u_prev)
     for i in 2:(k - 1)
       @. u_next = muladd(g[i], ϕstar_n[i], u_next)
@@ -78,9 +84,11 @@ function adjust!(cache::VCABMCache, cache_v, times, f, f1, kmax, atol, rtol)
       if max(error_k2, error_k1) <= cache.error_k
         cache.k = k - 1
       else
+        expand_ϕ_and_ϕstar!(cache, k+1)
         ϕ_np1!(cache, cache.f_prev, k + 2)
 
         if !isnothing(cache_v)
+          expand_ϕ_and_ϕstar!(cache_v, k+1)
           ϕ_np1!(cache_v, cache_v.f_prev, k + 2)
         end
         calculate_residuals!(u_erro, ϕ_np1[k + 2], u_prev, u_next, atol, rtol, norm)
@@ -112,15 +120,6 @@ function extend!(cache::VCABMCache, state, fv!)
       return
     end
 
-    fv!(t, t) # result is stored in f_next
-    for i in eachindex(u_prev.u)
-      insert!(f_prev.u[i], t, copy(f_next[t, i]))
-      insert!(f_next.u[i], t, zero(f_next[t, i]))
-      insert!(u_prev.u[i], t, copy(u_prev[t, i]))
-      insert!(u_next.u[i], t, zero(u_prev[t, i]))
-      insert!(u_erro.u[i], t, zero(u_prev[t, i]))
-    end
-
     _ϕ_n = [zero.(f_next[t, :]) for _ in eachindex(ϕ_n)]
     _ϕ_np1 = [zero.(f_next[t, :]) for _ in eachindex(ϕ_np1)]
     _ϕstar_n = [zero.(f_next[t, :]) for _ in eachindex(ϕstar_n)]
@@ -132,7 +131,7 @@ function extend!(cache::VCABMCache, state, fv!)
     # is smooth and the solver does not stall.
     for k′ in 1:k
       fv!(max(1, t - 1 - k + k′), t) # result is stored in f_next
-      ϕ_and_ϕstar!((f_prev=f_next[t, :], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(state.t, 1:(t - k + k′)), k′)
+      ϕ_and_ϕstar!((dts=view(cache.dts,1+(k-k′):13), ϕstar_nm1=_ϕstar_nm1, ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, β = cache.β), f_next[t, :], k′)
       _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
     end
 
@@ -142,41 +141,14 @@ function extend!(cache::VCABMCache, state, fv!)
       foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕstar_n, _ϕstar_n)
       foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕstar_nm1, _ϕstar_nm1)
     end
-  end
-end
 
-# Section III.5: Eq (5.9-5.10)
-function ϕ_and_ϕstar!(cache, times, k)
-  (; f_prev, ϕstar_nm1, ϕ_n, ϕstar_n) = cache
-  @inbounds begin
-    t = reverse(times)
-    β = one(eltype(times))
-    ϕ_n[1] .= f_prev
-    ϕstar_n[1] .= f_prev
-    for i in 2:k
-      β = β * (t[1] - t[i]) / (t[2] - t[i + 1])
-      @. ϕ_n[i] = ϕ_n[i - 1] - ϕstar_nm1[i - 1]
-      @. ϕstar_n[i] = β * ϕ_n[i]
-    end
-  end
-end
-
-function g_coeffs!(cache, times, k)
-  (; c, g) = cache
-  @inbounds begin
-    t = reverse(times)
-    dt = t[1] - t[2]
-    for i in 1:k
-      for q in 1:(k - (i - 1))
-        if i > 2
-          c[i, q] = muladd(-dt / (t[1] - t[i]), c[i - 1, q + 1], c[i - 1, q])
-        elseif i == 1
-          c[i, q] = inv(q)
-        elseif i == 2
-          c[i, q] = inv(q * (q + 1))
-        end
-      end
-      g[i] = c[i, 1] * dt
+    fv!(t, t) # result is stored in f_next
+    for i in eachindex(u_prev.u)
+      insert!(f_prev.u[i], t, copy(f_next[t, i]))
+      insert!(f_next.u[i], t, zero(f_next[t, i]))
+      insert!(u_prev.u[i], t, copy(u_prev[t, i]))
+      insert!(u_next.u[i], t, zero(u_prev[t, i]))
+      insert!(u_erro.u[i], t, zero(u_prev[t, i]))
     end
   end
 end
