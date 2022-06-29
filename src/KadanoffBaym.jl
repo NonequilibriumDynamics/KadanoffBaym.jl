@@ -1,9 +1,8 @@
 module KadanoffBaym
 
-import LinearAlgebra
 using Requires
-using OrdinaryDiffEq: VectorOfArray, OrdinaryDiffEqMutableCache, g_coefs!, ϕ_and_ϕstar!, expand_ϕ_and_ϕstar!, ϕ_np1!, γstar
 using QuadGK
+import OrdinaryDiffEq
 
 export GreenFunction, Symmetrical, SkewHermitian
 export kbsolve!

@@ -1,6 +1,6 @@
 # Part of the following code is licensed under the MIT "Expact" Lience, 
 # from https://github.com/SciML/OrdinaryDiffEq.jl
-mutable struct VCABMCache{T,U} <: OrdinaryDiffEqMutableCache
+mutable struct VCABMCache{T,U} <: OrdinaryDiffEq.OrdinaryDiffEqMutableCache
   u_prev::U
   u_next::U
   u_erro::U
@@ -31,12 +31,18 @@ mutable struct VCABMCache{T,U} <: OrdinaryDiffEqMutableCache
 end
 
 # Explicit Adams: Section III.5 Eq. (5.5)
-function predict!(cache::VCABMCache, times)
+function predict!(cache::VCABMCache, times; update_dt = true)
   (; u_prev, u_next, g, ϕstar_n, k) = cache
   @inbounds begin
-    ϕ_and_ϕstar!(cache, cache.f_prev, k)
-    g_coefs!(cache, k + 1)
-    # g_coeffs!(cache, times, k + 1 == length(times) ? k : k + 1)
+    if update_dt && cache.error_k <= one(cache.error_k)
+      for i = (length(cache.dts) - 1):-1:1
+        cache.dts[i+1] = cache.dts[i]
+      end
+      cache.dts[1] = times[end] - times[end - 1]
+    end
+
+    OrdinaryDiffEq.ϕ_and_ϕstar!(cache, cache.f_prev, k)
+    OrdinaryDiffEq.g_coefs!(cache, k + 1)
     @. u_next = muladd(g[1], ϕstar_n[1], u_prev)
     for i in 2:(k - 1)
       @. u_next = muladd(g[i], ϕstar_n[i], u_next)
@@ -49,18 +55,18 @@ end
 function correct!(cache::VCABMCache, f)
   (; u_next, g, ϕ_np1, ϕstar_n, k) = cache
   @inbounds begin
-    ϕ_np1!(cache, f(), k + 1)
+    OrdinaryDiffEq.ϕ_np1!(cache, f(), k + 1)
     @. u_next = muladd(g[k], ϕ_np1[k], u_next)
   end
   return u_next
 end
 
 # Control order: Section III.7 Eq. (7.7)
-function adjust!(cache::VCABMCache, cache_v, times, f, f1, kmax, atol, rtol)
+function adjust!(cache::VCABMCache, cache_v, times, f2, f1, kmax, atol, rtol)
   (; u_prev, u_next, g, ϕ_np1, ϕstar_n, k, u_erro) = cache
   @inbounds begin
     # Calculate error: Section III.7 Eq. (7.3)
-    calculate_residuals!(u_erro, ϕ_np1[k + 1], u_prev, u_next, atol, rtol, norm)
+    OrdinaryDiffEq.calculate_residuals!(u_erro, ϕ_np1[k + 1], u_prev, u_next, atol, rtol, norm, nothing)
     cache.error_k = norm(g[k + 1] - g[k]) * norm(u_erro)
 
     # Fail step: Section III.7 Eq. (7.4)
@@ -68,7 +74,7 @@ function adjust!(cache::VCABMCache, cache_v, times, f, f1, kmax, atol, rtol)
       return
     end
 
-    cache.f_prev .= f()
+    cache.f_prev .= f2()
     if !isnothing(cache_v)
       cache_v.f_prev .= f1()
     end
@@ -76,23 +82,23 @@ function adjust!(cache::VCABMCache, cache_v, times, f, f1, kmax, atol, rtol)
     if length(times) <= 5 || k < 3
       cache.k = min(k + 1, 3, kmax)
     else
-      calculate_residuals!(u_erro, ϕ_np1[k], u_prev, u_next, atol, rtol, norm)
+      OrdinaryDiffEq.calculate_residuals!(u_erro, ϕ_np1[k], u_prev, u_next, atol, rtol, norm, nothing)
       error_k1 = norm(g[k] - g[k - 1]) * norm(u_erro)
-      calculate_residuals!(u_erro, ϕ_np1[k - 1], u_prev, u_next, atol, rtol, norm)
+      OrdinaryDiffEq.calculate_residuals!(u_erro, ϕ_np1[k - 1], u_prev, u_next, atol, rtol, norm, nothing)
       error_k2 = norm(g[k - 1] - g[k - 2]) * norm(u_erro)
 
       if max(error_k2, error_k1) <= cache.error_k
         cache.k = k - 1
       else
-        expand_ϕ_and_ϕstar!(cache, k+1)
-        ϕ_np1!(cache, cache.f_prev, k + 2)
+        OrdinaryDiffEq.expand_ϕ_and_ϕstar!(cache, k+1)
+        OrdinaryDiffEq.ϕ_np1!(cache, cache.f_prev, k + 2)
 
         if !isnothing(cache_v)
-          expand_ϕ_and_ϕstar!(cache_v, k+1)
-          ϕ_np1!(cache_v, cache_v.f_prev, k + 2)
+          OrdinaryDiffEq.expand_ϕ_and_ϕstar!(cache_v, k+1)
+          OrdinaryDiffEq.ϕ_np1!(cache_v, cache_v.f_prev, k + 2)
         end
-        calculate_residuals!(u_erro, ϕ_np1[k + 2], u_prev, u_next, atol, rtol, norm)
-        error_kstar = norm((times[end] - times[end - 1]) * γstar[k + 2]) * norm(u_erro)
+        OrdinaryDiffEq.calculate_residuals!(u_erro, ϕ_np1[k + 2], u_prev, u_next, atol, rtol, norm, nothing)
+        error_kstar = norm((times[end] - times[end - 1]) * OrdinaryDiffEq.γstar[k + 2]) * norm(u_erro)
         if error_kstar < cache.error_k
           cache.k = min(k + 1, kmax)
           cache.error_k = one(cache.error_k)   # constant dt
@@ -131,7 +137,7 @@ function extend!(cache::VCABMCache, state, fv!)
     # is smooth and the solver does not stall.
     for k′ in 1:k
       fv!(max(1, t - 1 - k + k′), t) # result is stored in f_next
-      ϕ_and_ϕstar!((dts=view(cache.dts,1+(k-k′):13), ϕstar_nm1=_ϕstar_nm1, ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, β = cache.β), f_next[t, :], k′)
+      OrdinaryDiffEq.ϕ_and_ϕstar!((dts=view(cache.dts,1+(k-k′):13), ϕstar_nm1=_ϕstar_nm1, ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, β = cache.β), f_next[t, :], k′)
       _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
     end
 

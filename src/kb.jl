@@ -67,74 +67,66 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
   # Holds the information necessary to integrate
   cache = let
     t1 = length(state.t)
-    VCABMCache{eltype(state.t)}(kmax, VectorOfArray([[u[t1, t2] for t2 in 1:t1] for u in state.u]))
+    VCABMCache{eltype(state.t)}(kmax, OrdinaryDiffEq.VectorOfArray([[u[t1, t2] for t2 in 1:t1] for u in state.u]))
   end
 
   cache_v = isempty(state.v) ? nothing : let
     t1 = length(state.t)
-    VCABMCache{eltype(state.t)}(kmax, VectorOfArray([[v[t1],] for v in state.v]))
+    cache_v = VCABMCache{eltype(state.t)}(kmax, OrdinaryDiffEq.VectorOfArray([[v[t1],] for v in state.v]))
+    cache_v.dts = cache.dts
+    cache_v
   end
 
   # The rhs is reshaped into a univariate problem
-  function f!(t1)
-    Threads.@threads for t2 in 1:(t1-1)
-      fv!(view(cache.f_next, t2, :), state.t, state.w.ws[t1], state.w.ws[t2], t1, t2)
+  f2v!(t1, t2) = fv!(view(cache.f_next, t2, :), state.t, state.w.ws[t1], state.w.ws[t2], t1, t2)
+  f2d!(t1, t2) = fd!(view(cache.f_next, t2, :), state.t, state.w.ws[t1], state.w.ws[t2], t1, t2)
+
+  function f2t!()
+    t1 = length(state.t)
+    for t2 in 1:(t1 - 1)
+      f2v!(t1, t2)
     end
-    fd!(view(cache.f_next, t1, :), state.t, state.w.ws[t1], state.w.ws[t1], t1, t1)
+    f2d!(t1, t1)
     return cache.f_next
   end
 
-  function f1!_(t1)
-    f1!(view(cache_v.f_next, :), state.t, state.w.ws[length(state.t)], length(state.t))
+  function f1t!()
+    t1 = length(state.t)
+    f1!(view(cache_v.f_next, :), state.t, state.w.ws[t1], t1)
     return cache_v.f_next
   end
 
-  cache.f_prev .= f!(length(state.t))
-
+  cache.f_prev .= f2t!()
   if !isempty(state.v)
-    cache_v.f_prev .= f1!_(length(state.t))
+    cache_v.f_prev .= f1t!()
   end
 
   while timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ, stop)
-    tmp = cache.dts[kmax+1]
-    for i = kmax:-1:1
-      cache.dts[i+1] = cache.dts[i]
-    end
-    cache.dts[1] = state.t[end] - state.t[end-1]
-    
     t1 = length(state.t)
 
     # Extend the caches to accomodate the new time column
-    extend!(cache, state, (t1, t2) -> fv!(view(cache.f_next, t2, :), state.t, state.w.ws[t1], state.w.ws[t2], t1, t2))
+    extend!(cache, state, f2v!)
 
     # Predictor
     u_next = predict!(cache, state.t)
     foreach((u, u′) -> foreach(t2 -> u[t1, t2] = u′[t2], 1:t1), state.u, u_next.u)
     if !isempty(state.v)
-      u_next = predict!(cache_v, state.t)
+      u_next = predict!(cache_v, state.t; update_dt = false)
       foreach((v, v′) -> v[t1] = v′[1], state.v, u_next.u)
     end
     foreach(t2 -> callback(state.t, state.w.ws[t1], state.w.ws[t2], t1, t2, state.w.ws), 1:t1)
 
     # Corrector
-    u_next = correct!(cache, () -> f!(t1))
+    u_next = correct!(cache, f2t!)
     foreach((u, u′) -> foreach(t2 -> u[t1, t2] = u′[t2], 1:t1), state.u, u_next.u)
     if !isempty(state.v)
-      u_next = correct!(cache_v, () -> f1!_(t1))
+      u_next = correct!(cache_v, f1t!)
       foreach((v, v′) -> v[t1] = v′[1], state.v, u_next.u)
     end
     foreach(t2 -> callback(state.t, state.w.ws[t1], state.w.ws[t2], t1, t2, state.w.ws), 1:t1)
 
     # Calculate error and adjust order
-    adjust!(cache, cache_v, state.t, () -> f!(t1), () -> f1!_(t1), kmax, atol, rtol)
-
-    if cache.error_k > one(cache.error_k)
-      for i = 1:kmax
-        cache.dts[i] = cache.dts[i+1]
-      end
-      cache.dts[kmax+1] = tmp
-    end
-
+    adjust!(cache, cache_v, state.t, f2t!, f1t!, kmax, atol, rtol)
   end # timeloop!
   return (t=state.t, w=state.w)
 end
@@ -151,16 +143,16 @@ function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ,
     dt = min((state.t[end] - state.t[end - 1]) / q, dtmax)
   end
 
+  # Don't go over tmax
+  if last(state.t) + dt > tmax
+    dt = tmax - last(state.t)
+  end
+
   # Remove the last element of the time-grid / weights if last step failed
   if cache.error_k > one(cache.error_k)
     pop!(state.t)
     pop!(state.w.ks)
-    pop!(state.w.ws)
-  end
-
-  # Don't go over tmax
-  if last(state.t) + dt > tmax
-    dt = tmax - last(state.t)
+    pop!(state.w.ws)    
   end
 
   # Reached the end of the integration
