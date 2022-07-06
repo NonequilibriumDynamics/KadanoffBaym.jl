@@ -170,8 +170,7 @@ function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ,
     end
     push!(state.t, last(state.t) + dt)
     push!(state.w.ks, cache.k)
-    push!(state.w.ws, update_weights!(copy(state.w.ws[end]), state.t, state.w.ks, atol, rtol))
-    # push!(state.w.ws, calculate_weights(state.t, state.w.ks, atol, rtol))
+    push!(state.w.ws, calculate_weights(state.t, state.w.ks, atol, rtol))#update_weights!(copy(last(state.w.ws)), state.t, state.w.ks, atol, rtol))
     return true
   end
 end
