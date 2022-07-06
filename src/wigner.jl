@@ -31,7 +31,7 @@ The algorithm only works when `ts` – and consequently `x` – is equidistant.
 <http://tftb.nongnu.org>
 """
 function wigner_transform(x::AbstractMatrix; ts=1:size(x, 1), fourier=true)
-  LinearAlgebra.checksquare(x)
+  # LinearAlgebra.checksquare(x)
 
   Nt = size(x, 1)
   @assert length(ts) == Nt
