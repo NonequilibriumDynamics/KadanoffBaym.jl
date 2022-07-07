@@ -114,7 +114,7 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
       u_next = predict!(cache_v, state.t; update_dt = false)
       foreach((v, v′) -> v[t1] = v′[1], state.v, u_next.u)
     end
-    foreach(t2 -> callback(state.t, state.w.ws[t1], state.w.ws[t2], t1, t2, state.w.ws), 1:t1)
+    foreach(t2 -> callback(state.t, state.w.ws[t1], state.w.ws[t2], t1, t2), 1:t1)
 
     # Corrector
     u_next = correct!(cache, f2t!)
@@ -123,7 +123,7 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
       u_next = correct!(cache_v, f1t!)
       foreach((v, v′) -> v[t1] = v′[1], state.v, u_next.u)
     end
-    foreach(t2 -> callback(state.t, state.w.ws[t1], state.w.ws[t2], t1, t2, state.w.ws), 1:t1)
+    foreach(t2 -> callback(state.t, state.w.ws[t1], state.w.ws[t2], t1, t2), 1:t1)
 
     # Calculate error and adjust order
     adjust!(cache, cache_v, state.t, f2t!, f1t!, kmax, atol, rtol)
