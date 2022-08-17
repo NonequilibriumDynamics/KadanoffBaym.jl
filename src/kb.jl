@@ -39,6 +39,9 @@ for 2-point functions `u0` from `t0` to `tmax`.
   - `γ::Real`: Safety factor for the calculated time-step such that it is 
     accepted with a higher probability
   - `kmax::Integer`: Maximum order of the adaptive Adams method
+  - `kmax_vie::Integer`: Maximum order of interpolant of the Volterra integrals.
+    Heuristically, it seems that having too high of a `kmax_vie` can result in numerical
+    instabilities.
 
 # Notes
   - Due to high memory and computation costs, `kbsolve!` mutates the initial condition `u0` 
@@ -51,7 +54,7 @@ for 2-point functions `u0` from `t0` to `tmax`.
 function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFunction}, (t0, tmax)::Tuple{Union{Real, Vector{<:Real}}, Real}; 
                   f1! =nothing, v0::Vector=[],
                   callback=(x...)->nothing, stop=(x...)->false,
-                  atol=1e-8, rtol=1e-6, dtini=0.0, dtmax=Inf, qmax=5, qmin=1 // 5, γ=9 // 10, kmax=12)
+                  atol=1e-8, rtol=1e-6, dtini=0.0, dtmax=Inf, qmax=5, qmin=1 // 5, γ=9 // 10, kmax=12, kmax_vie=kmax ÷ 2)
 
   # Support for an initial time-grid
   if t0 isa Real
@@ -83,7 +86,7 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
 
   function f2t!()
     t1 = length(state.t)
-    for t2 in 1:(t1 - 1)
+    Threads.@threads for t2 in 1:(t1 - 1)
       f2v!(t1, t2)
     end
     f2d!(t1, t1)
@@ -101,7 +104,7 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
     cache_v.f_prev .= f1t!()
   end
 
-  while timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ, stop)
+  while timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ, kmax_vie, stop)
     t1 = length(state.t)
 
     # Extend the caches to accomodate the new time column
@@ -132,7 +135,7 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
 end
 
 # Controls the step size & resizes the Green functions if required
-function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ, stop)
+function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ, kmax_vie, stop)
   if isone(length(state.t)) || state.start[1]
     # Section II.4: Starting Step Size, Eq. (4.14)
     dt = iszero(dtini) ? initial_step(cache.f_prev, cache.u_prev, atol, rtol) : dtini
@@ -169,8 +172,8 @@ function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ,
       foreach(v -> resize!(v, l), state.v)
     end
     push!(state.t, last(state.t) + dt)
-    push!(state.w.ks, cache.k)
-    push!(state.w.ws, calculate_weights(state.t, state.w.ks, atol, rtol))#update_weights!(copy(last(state.w.ws)), state.t, state.w.ks, atol, rtol))
+    push!(state.w.ks, min(cache.k, kmax_vie))
+    push!(state.w.ws, calculate_weights(state.t, state.w.ks, atol, rtol))
     return true
   end
 end
