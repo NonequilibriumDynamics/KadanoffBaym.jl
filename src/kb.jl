@@ -65,7 +65,7 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
   @assert last(t0) <= tmax "Only t0 <= tmax supported"
 
   # Holds the information about the integration
-  state = (u=u0, v=v0, t=t0, w=VolterraWeights(t0), start=[true])
+  state = (u=u0, v=v0, t=t0, w=VolterraWeights(t0, atol, rtol), start=[true])
 
   # Holds the information necessary to integrate
   cache = let
