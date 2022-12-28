@@ -28,7 +28,8 @@ Base.getindex(b::B, i) = (b.u^(i) - b.l^(i)) / (i)
 function calculate_weights(ts, ks)
   ws = zero(ts)
   for (i, k) in enumerate(ks)
-    ws[i:(i+k)] .+= Vandermonde(ts[i:(i+k)])' \ B{k+1}(ts[i], ts[i+1])
+    r = max(1, i - (k - 1)):min(length(ts), i + k) # too large of an interpolant, imo
+    ws[r] += Vandermonde(ts[r])' \ B{length(r)}(ts[i], ts[i+1])
   end
   ws
 end
