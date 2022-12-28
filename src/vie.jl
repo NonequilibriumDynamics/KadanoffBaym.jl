@@ -8,30 +8,27 @@ mutable struct VolterraWeights{T}
     ws = T[[0.0,]]
 
     for k in eachindex(ks)
-      push!(ws, (@views calculate_weights(ts[1:(k+1)], ks[1:k], atol, rtol)))
+      push!(ws, (@views calculate_weights(ts[1:(k+1)], ks[1:k])))
     end
 
     return new{T}(ws, ks)
   end
 end
 
-# Calculates the weights used for evaluating ∫dt f(t) as ∑ᵢ hᵢ fᵢ
-function calculate_weights(ts, ks, atol, rtol)
-  @assert length(ts) == length(ks) + 1
+struct B{N,T} <: AbstractArray{T, 1}
+  l::T
+  u::T
 
-  # Integral of Lagrange polynom
-  L(; i, j, ks) = quadgk(ts[i], ts[i+1]; atol=atol, rtol=rtol) do x
-    prod((x - ts[i+1 - m]) / (ts[i+1 - j] - ts[i+1 - m]) for m in ks if m != j)
-  end[1]
+  B{N}(l::T, u::T) where {N,T} = new{N,T}(l, u) 
+end
 
-  # Compute weights
+Base.size(b::B{N,T}) where {N,T} = (N, )
+Base.getindex(b::B, i) = (b.u^(i) - b.l^(i)) / (i)
+
+function calculate_weights(ts, ks)
   ws = zero(ts)
   for (i, k) in enumerate(ks)
-    r = -min((k-1), length(ks)-i):min(k,i)
-    for j in r
-      ws[i+1-j] += L(i=i, j=j, ks=r)
-    end
+    ws[i:(i+k)] .+= Vandermonde(ts[i:(i+k)])' \ B{k+1}(ts[i], ts[i+1])
   end
-
-  return ws
+  ws
 end

@@ -54,7 +54,7 @@ b = let
   TimeOrderedGreenFunction(x - x', y - y') # Skew-symmetric L and G components
 end
 
-dts = reduce(hcat, ([KadanoffBaym.calculate_weights(ts[1:i], ones(Int64, i-1), 1e-8, 1e-3); zeros(length(ts)-i)] for i in eachindex(ts))) |> UpperTriangular
+dts = reduce(hcat, ([KadanoffBaym.calculate_weights(ts[1:i], ones(Int64, i-1)); zeros(length(ts)-i)] for i in eachindex(ts))) |> UpperTriangular
 
 ⋆(a, b) = conv(a, b, dts)
 

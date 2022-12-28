@@ -1,7 +1,7 @@
 module KadanoffBaym
 
 using LinearAlgebra
-using QuadGK
+using SpecialMatrices
 using AbstractFFTs
 import OrdinaryDiffEq
 
