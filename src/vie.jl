@@ -2,7 +2,7 @@ mutable struct VolterraWeights{T}
   ws::Vector{T}   # integration weights
   ks::Vector{Int} # integrator orders
 
-  function VolterraWeights(ts::T, atol=1e-8, rtol=1e-3) where {T}
+  function VolterraWeights(ts::T) where {T}
     # TODO: Not entirely clear how to determine the order of the weights
     ks = isone(length(ts)) ? Int64[] : [1; 2ones(Int64, length(ts) - 3); 1]
     ws = T[[0.0,]]
