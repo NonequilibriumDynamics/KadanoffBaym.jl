@@ -1,4 +1,5 @@
 using KadanoffBaym
+using LinearAlgebra
 using Test
 
 @testset verbose=true "KadanoffBaym.jl" begin
@@ -8,5 +9,9 @@ using Test
 
   @testset "Solver" begin
     include("kb.jl")
+  end
+
+  @testset "Langreth" begin
+    include("langreth.jl")
   end
 end

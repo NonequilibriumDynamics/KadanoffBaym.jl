@@ -29,3 +29,14 @@ _last2() = throw(ArgumentError("Cannot call last2 on an empty tuple."))
 _last2(v) = throw(ArgumentError("Cannot call last2 on 1-element tuple."))
 @inline _last2(v1, v2) = (v1, v2)
 @inline _last2(v, t...) = _last2(t...)
+
+function skew_hermitify!(x)
+  for i in 1:size(x, 1)
+    for j in 1:(i - 1)
+      x[j,i] = -conj(x[i,j])
+    end
+
+    x[i,i] = eltype(x) <: Real ? 0.0 : im * imag(x[i,i])
+  end
+  return x
+end
