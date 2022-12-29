@@ -36,6 +36,8 @@ function wigner_transform(x::AbstractMatrix; ts=1:size(x, 1), fourier=true)
   Nt = size(x, 1)
   @assert length(ts) == Nt
 
+  @assert let x = diff(ts); all(z -> z ≈ x[1], x) end "`ts` is not equidistant"
+
   # Change of basis x(t1, t2) → x_W(t1 - t2, (t1 + t2)/2)
   x_W = zero(x)
 

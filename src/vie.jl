@@ -21,5 +21,5 @@ function calculate_weights(ts, ks)
     r = max(1, i - (k - 1)):min(length(ts), i + k) # too large of an interpolant, imo
     ws[r] += Vandermonde(ts[r])' \ [(ts[i+1]^j - ts[i]^j) / j for j in eachindex(r)]
   end
-  ws
+  return ws
 end
