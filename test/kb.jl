@@ -57,7 +57,7 @@ end
 
   G = GreenFunction(ones(1, 1), Symmetrical)
 
-  kb = kbsolve!(fv!, fd!, [G], (0.0, 30.0); atol=atol, rtol=rtol)
+  kb = kbsolve!(fv!, fd!, [G], (0.0, 30.0); atol=atol, rtol=rtol, kmax_vie = 4)
 
   sol(t) = cos(t) + sin(t)
 
