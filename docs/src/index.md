@@ -31,7 +31,7 @@ To learn how to work with `KadanoffBaym.jl`, there are two options:
 `KadanoffBaym.jl` was designed to be lean and simple and hence only exports a handful of functions, namely [`GreenFunction`](@ref) (together with two possible time symmetries, `Symmetrical` and `SkewHermitian`) and the integrator [`kbsolve!`](@ref).
 
 !!! note
-	When you import the external packages `FFTW` and `Interpolations`, `KadanoffBaym.jl` will also export the functions `wigner_transform` and `wigner_transform_itp` to perform Wigner transformations.
+	You need to import an FFT library -- e.g., `FFTW` -- to use `wigner_transform`.
 
 
 ### Index
@@ -55,10 +55,6 @@ GreenFunction{T,N,A,U<:AbstractSymmetry}
 
 ```@docs
 wigner_transform(x::AbstractMatrix)
-```
-
-```@docs
-wigner_transform_itp(x::AbstractMatrix, ts::Vector)
 ```
 
 ## Citation

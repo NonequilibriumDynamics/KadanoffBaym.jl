@@ -14,19 +14,23 @@ du(t_1,t_2) / dt_2 = f_h(t_1,t_2) = h[u,t_1,t_2] + ∫_{t0}^{t1} dτ K_1^h[u,t_1
 for 2-point functions `u0` from `t0` to `tmax`.
 
 # Parameters
-  - `fv!(out, ts, w1, w2, t1, t2)`: The right-hand side of ``du/dt_1`` at *indices* (`t1`, `t2`) 
+  - `fv!(out, ts, w1, w2, t1, t2)`: The right-hand side of ``du(t_1,t_2)/dt_1`` 
     on the time-grid (`ts` x `ts`). The weights `w1` and `w2` can be used to integrate
     the Volterra kernels `K1v` and `K2v` as `sum_i w1_i K1v_i` and  `sum_i w2_i K2v_i`,
-    respectively. The output is saved in-place in `out`, which has the same shape as `u0`.
-  - `fd!(out, ts, w1, w2, t1, t2)`: The right-hand side of ``(du/dt_1 + du/dt_2)|_{t_2 → t_1}``
-  - `u0::Vector{<:GreenFunction}`: List of 2-point functions to be time-stepped
+    respectively. The output is saved in-place in `out`, which has the same shape as `u0`
+  - `fd!(out, ts, w1, w2, t1, t2)`: The right-hand side of ``(du(t_1,t_2)/dt_1 + du(t_1,t_2)/dt_2)|_{t_2 → t_1}``
+  - `u0::Vector{<:GreenFunction}`: List of 2-point functions to be integrated
   - `(t0, tmax)`: A tuple with the initial time(s) `t0` – can be a vector of 
     past times – and final time `tmax`
 
 # Optional keyword parameters
+  - `f1!(out, ts, w1, t1)`: The right-hand-side of ``dv(t_1)/dt_1``. The weight `w1`
+    can be used to integrate the Volterra kernel and the output is saved in-place in `out`, 
+    which has the same shape as `v0`
+  - `v0::Vector`: List of 1-point functions to be integrated
   - `callback(ts, w1, w2, t1, t2)`: A function that gets called everytime the 
     2-point function at *indices* (`t1`, `t2`) is updated. Can be used to update
-    functions which are not being integrated, such as self-energies.
+    functions which are not being integrated, such as self-energies
   - `stop(ts)`: A function that gets called at every time-step that stops the 
     integration when it evaluates to `true`
   - `atol::Real`: Absolute tolerance (components with magnitude lower than 
@@ -39,9 +43,9 @@ for 2-point functions `u0` from `t0` to `tmax`.
   - `γ::Real`: Safety factor for the calculated time-step such that it is 
     accepted with a higher probability
   - `kmax::Integer`: Maximum order of the adaptive Adams method
-  - `kmax_vie::Integer`: Maximum order of interpolant of the Volterra integrals.
+  - `kmax_vie::Integer`: Maximum order of interpolant of the Volterra integrals
     Heuristically, it seems that having too high of a `kmax_vie` can result in numerical
-    instabilities.
+    instabilities
 
 # Notes
   - Due to high memory and computation costs, `kbsolve!` mutates the initial condition `u0` 
