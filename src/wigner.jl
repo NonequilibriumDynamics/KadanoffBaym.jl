@@ -31,15 +31,12 @@ The algorithm only works when `ts` – and consequently `x` – is equidistant.
 <http://tftb.nongnu.org>
 """
 function wigner_transform(x::AbstractMatrix; ts=1:size(x, 1), fourier=true)
-  LinearAlgebra.checksquare(x)
+  # LinearAlgebra.checksquare(x)
 
   Nt = size(x, 1)
   @assert length(ts) == Nt
 
-  # NOTE: code for non-equidistant time-grids
-  # The resulting transformation will be in an equidistant grid
-  # ts_equidistant = range(ts[1], stop=ts[end], length=length(ts))
-  # tᵢ = searchsortedlast.(Ref(ts_equidistant), ts[T]) # map to an equidistant index
+  @assert let x = diff(ts); all(z -> z ≈ x[1], x) end "`ts` is not equidistant"
 
   # Change of basis x(t1, t2) → x_W(t1 - t2, (t1 + t2)/2)
   x_W = zero(x)
@@ -61,7 +58,7 @@ function wigner_transform(x::AbstractMatrix; ts=1:size(x, 1), fourier=true)
     end
   end
 
-  x_W = circshift(x_W, (Nt ÷ 2, 0))
+  x_W = fftshift(x_W, 1)
   τs = ts - reverse(ts)
   τs = τs .- (isodd(Nt) ? 0.0 : 0.5(τs[2] - τs[1]))
 
@@ -73,17 +70,6 @@ function wigner_transform(x::AbstractMatrix; ts=1:size(x, 1), fourier=true)
 
     return x_Ŵ, (ωs, ts)
   end
-end
-
-"""
-    wigner_transform_itp(x::AbstractMatrix, ts::Vector; fourier=true)
-
-Interpolates `x` on an equidistant mesh with the same boundaries and length as `ts` and calls [`wigner_transform`](@ref)
-"""
-function wigner_transform_itp(x::AbstractMatrix, ts::Vector; fourier=true)
-  ts_lin = range(first(ts), last(ts); length=length(ts))
-  itp = interpolate((ts, ts), x, Gridded(Linear()))
-  return wigner_transform([itp(t1, t2) for t1 in ts_lin, t2 in ts_lin]; ts=ts_lin, fourier=fourier)
 end
 
 """ 
@@ -114,10 +100,10 @@ function ft(xs, ys; inverse::Bool = false)
   x̂s = fftfreq(L, 2π / dx)
 
   # The resulting Fourier transform also picks up a phase
-  ℯⁱᵠ = (inverse ? 1 / (2π) : L) * dx * exp.((inverse ? -1.0 : 1.0) * im * xs[1] .* x̂s) 
+  ℯⁱᵠ = (inverse ? 1 / (2π) : 1.0) * dx * exp.((inverse ? -1.0 : 1.0) * im * xs[1] .* x̂s) 
 
   # FFT
-  ŷs = ℯⁱᵠ .* (inverse ? fft(ys) : ifft(ys))
+  ŷs = ℯⁱᵠ .* (inverse ? fft : bfft)(ys)
 
-  return circshift(x̂s, L ÷ 2), circshift(ŷs, L ÷ 2)
+  return fftshift(x̂s), fftshift(ŷs)
 end

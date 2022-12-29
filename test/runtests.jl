@@ -1,12 +1,12 @@
 using KadanoffBaym
 using Test
 
-@testset "All tests" begin
-  @testset "Green functions" begin
+@testset verbose=true "KadanoffBaym.jl" begin
+  @testset "GreenFunction" begin
     include("gf.jl")
   end
 
-  @testset "Kadanoff-Baym solver" begin
+  @testset "Solver" begin
     include("kb.jl")
   end
 end

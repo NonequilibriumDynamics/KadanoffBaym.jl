@@ -13,10 +13,18 @@
     out[2] = zero(out[2])
   end
 
+  function f1!(out, ts, h1, t)
+    out[1] = -1.0im * J[t]
+  end
+
+  # two-time initial conditions
   G = GreenFunction(zeros(ComplexF64, 1, 1), SkewHermitian)
   L = GreenFunction(1im * ones(ComplexF64, 1, 1), SkewHermitian)
 
-  kb = kbsolve!(fv!, fd!, [G, L], (0.0, 30.0); atol=atol, rtol=rtol)
+  # one-time initial conditions
+  J = ComplexF64[1.0]
+
+  kb = kbsolve!(fv!, fd!, [G, L], (0.0, 30.0); atol=atol, rtol=rtol, v0 = [J,], f1! =f1!)
 
   function sol1(t, g0, l0)
     s = sqrt(Complex(λ^2 - 4))
@@ -31,6 +39,7 @@
   @testset begin
     @test G[:, 1] ≈ [sol1(t1, L[1, 1], G[1, 1]) for t1 in kb.t] atol = atol rtol = rtol
     @test L[:, 1] ≈ [sol2(t1, L[1, 1], G[1, 1]) for t1 in kb.t] atol = atol rtol = rtol
+    @test real(J) ≈ cos.(kb.t) atol = atol rtol = rtol
   end
 end
 
@@ -82,22 +91,24 @@ end
   rtol = 1e-5
 
   function fv!(out, times, h1, h2, t, t′)
-    I = sum(h1[s] * (s >= t′ ? G[t′, s] : 0.0) for s in eachindex(h1))
+    I = sum(h1[s] * G[s, t′] for s in eachindex(h1))
+    I-= sum(h2[s] * G[s, t′] for s in eachindex(h2))
     out[1] = (1 - I)
   end
+
   function fd!(out, times, h1, h2, t, t′)
     out[1] = zero(out[1])
+  end
+
+  function sol(t)
+    return cos(t) + sin(t)
   end
 
   G = GreenFunction(ones(1, 1), Symmetrical)
 
   kb = kbsolve!(fv!, fd!, [G], (0.0, 1.0); atol=atol, rtol=rtol)
 
-  function sol(t)
-    return cos(t) + sin(t)
-  end
-
   sol_ = hcat([vcat(sol.(kb.t[i] .- kb.t[1:i]), sol.(kb.t[(1 + i):length(kb.t)] .- kb.t[i])) for i in eachindex(kb.t)]...)
 
-  @test G.data ≈ sol_ atol = 1e1atol rtol = 5e2rtol
+  @test G.data ≈ sol_ atol = 1e1atol rtol = 2e1rtol
 end

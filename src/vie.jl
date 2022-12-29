@@ -2,14 +2,13 @@ mutable struct VolterraWeights{T}
   ws::Vector{T}   # integration weights
   ks::Vector{Int} # integrator orders
 
-  function VolterraWeights(ts::T) where {T}
-    # if starting from a point in the past, consider trapezium
-    ks = ones(Int64, length(ts)-1)
-
+  function VolterraWeights(ts::T, atol=1e-8, rtol=1e-3) where {T}
+    # TODO: Not entirely clear how to determine the order of the weights
+    ks = isone(length(ts)) ? Int64[] : [1; 2ones(Int64, length(ts) - 3); 1]
     ws = T[[0.0,]]
 
     for k in eachindex(ks)
-      push!(ws, @views calculate_weights(ts[1:(k+1)], ks[1:k]))
+      push!(ws, (@views calculate_weights(ts[1:(k+1)], ks[1:k], atol, rtol)))
     end
 
     return new{T}(ws, ks)
@@ -17,7 +16,7 @@ mutable struct VolterraWeights{T}
 end
 
 # Calculates the weights used for evaluating ∫dt f(t) as ∑ᵢ hᵢ fᵢ
-function calculate_weights(ts, ks, atol=1e-8, rtol=1e-3)
+function calculate_weights(ts, ks, atol, rtol)
   @assert length(ts) == length(ks) + 1
 
   # Integral of Lagrange polynom

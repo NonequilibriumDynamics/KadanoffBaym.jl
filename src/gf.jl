@@ -1,18 +1,27 @@
 abstract type AbstractSymmetry end
+abstract type AbstractGreenFunction{T,N} <: AbstractArray{T,N} end
 
 """
+    Symmetrical
+
 Defined as
 
-    G(t,t') = G(t′,t)ᵀ
+``G(t,t') = G(t',t)^\\top``
 """
 struct Symmetrical <: AbstractSymmetry end
 
 """
+    SkewHermitian
+
 Defined as
 
-    G(t,t') = -G(t′,t)†
+``G(t,t') = -G(t',t)^\\dagger``
 """
 struct SkewHermitian <: AbstractSymmetry end
+
+@inline symmetry(::Type{<:AbstractSymmetry}) = error("Not defined")
+@inline symmetry(::Type{Symmetrical}) = transpose
+@inline symmetry(::Type{SkewHermitian}) = (-) ∘ adjoint
 
 """
     GreenFunction(g::AbstractArray, s::AbstractSymmetry)
@@ -46,7 +55,7 @@ julia> gf[i,j,k] == gf[:,:,...,:,i,j,k]
 Custom symmetries can be implemented via multiple dispatch
 ```julia-repl
 julia> struct MySymmetry <: KadanoffBaym.AbstractSymmetry end
-julia> @inline KadanoffBaym.symmetry(::GreenFunction{T,N,A,MySymmetry}) where {T,N,A} = conj
+julia> @inline KadanoffBaym.symmetry(::Type{MySymmetry}) = conj
 ```
 
 # Examples
@@ -58,10 +67,10 @@ julia> data = zeros(spin_dim, spin_dim, time_dim, time_dim)
 julia> gf = GreenFunction(data, Symmetrical)
 julia> gf[2,1] = rand(spin_dim, spin_dim)
 julia> @show gf[1,2]
-julia> @show KadanoffBaym.symmetry(gf)(gf[2,1])
+julia> @show KadanoffBaym.symmetry(Symmetrical)(gf[2,1])
 ```
 """
-mutable struct GreenFunction{T,N,A,U<:AbstractSymmetry} <: AbstractArray{T,N}
+mutable struct GreenFunction{T,N,A,U<:AbstractSymmetry} <: AbstractGreenFunction{T,N}
   data::A
 end
 
@@ -71,9 +80,6 @@ function GreenFunction(G::AbstractArray, U::Type{<:AbstractSymmetry})
   end
   return GreenFunction{eltype(G),ndims(G),typeof(G),U}(G)
 end
-
-@inline symmetry(::GreenFunction{T,N,A,Symmetrical}) where {T,N,A} = transpose
-@inline symmetry(::GreenFunction{T,N,A,SkewHermitian}) where {T,N,A} = (-) ∘ adjoint
 
 @inline Base.size(G::GreenFunction, I...) = size(G.data, I...)
 @inline Base.length(G::GreenFunction) = length(G.data)
@@ -95,7 +101,7 @@ Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,U}, v, I
     G.data[ntuple(i -> Colon(), N-N1)..., jj..., ts...] = v
   else
     G.data[ntuple(i -> Colon(), N-N1)..., jj..., ts...] = v
-    G.data[ntuple(i -> Colon(), N-N1)..., jj..., reverse(ts)...] = symmetry(G)(v)
+    G.data[ntuple(i -> Colon(), N-N1)..., jj..., reverse(ts)...] = symmetry(U)(v)
   end
 end
 
@@ -156,7 +162,7 @@ end
 Provides a different (but not necessarily more efficient) data storage for 
 elastic skew-Hermitian data
 """
-struct SkewHermitianArray{T,N} <: AbstractArray{T,N}
+struct SkewHermitianArray{T,N} <: AbstractGreenFunction{T,N}
   data::Vector{Vector{T}}
 
   function SkewHermitianArray(a::T) where {T<:Union{Number,AbstractArray}}
@@ -179,6 +185,8 @@ end
     a.data[j - i + 1][i] = -adjoint(v)
   end
 end
+
+Base.resize!(A::SkewHermitianArray, t::Int) = (_resize!(A, t); A)
 
 function _resize!(a::SkewHermitianArray{T}, t::Int) where {T}
   l = length(a)
