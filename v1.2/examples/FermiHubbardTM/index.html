@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Fermi-Hubbard Model II · KadanoffBaym.jl</title><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img class="docs-light-only" src="../../assets/logo.png" alt="KadanoffBaym.jl logo"/><img class="docs-dark-only" src="../../assets/logo-dark.png" alt="KadanoffBaym.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">KadanoffBaym.jl</a></span></div><form class="docs-search" action="../../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../../">Overview</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../TightBindingModel/">Tight-Binding Model</a></li><li><a class="tocitem" href="../FermiHubbard2B/">Fermi-Hubbard Model I</a></li><li class="is-active"><a class="tocitem" href>Fermi-Hubbard Model II</a></li><li><a class="tocitem" href="../OpenBoseDimer/">Open Bose Dimer</a></li><li><a class="tocitem" href="../StochasticProcesses/">Stochastic Processes</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Fermi-Hubbard Model II</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Fermi-Hubbard Model II</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/blob/master/docs/src/examples/FermiHubbardTM.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="FHM_II"><a class="docs-heading-anchor" href="#FHM_II">Fermi-Hubbard Model II</a><a id="FHM_II-1"></a><a class="docs-heading-anchor-permalink" href="#FHM_II" title="Permalink"></a></h1><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>This example is the continuation of <a href="../FermiHubbard2B/#FHM_I">Fermi-Hubbard Model I</a>. It is recommended that you familiarize yourself with the latter first.</p></div></div><p>In part II of our example about the Fermi-Hubbard model, we will solve the so-called <span>$T$</span>-matrix approximation, which is a &quot;non-perturbative&quot; self-energy resummation. As we saw in <a href="../FermiHubbard2B/#FHM_I">part I</a>, in the standard perturbative second Born approximation, the self-energies are given by</p><p class="math-container">\[\begin{align*}
+    \Sigma^\lessgtr_{ij, \uparrow}  (t, t&#39;) = \mathrm{i}U^2 \Phi^\lessgtr_{ij}(t, t&#39;) G^\gtrless_{ji, \downarrow}(t&#39;, t),\\
+    \Sigma^\lessgtr_{ij, \downarrow}(t, t&#39;) = \mathrm{i}U^2 \Phi^\lessgtr_{ij}(t, t&#39;)G^\gtrless_{ji, \uparrow}(t&#39;, t),
+\end{align*}\]</p><p>where</p><p class="math-container">\[\begin{align*}
+    \left[\boldsymbol{\Phi}^\lessgtr(t, t&#39;)\right]_{ij} = \Phi^\lessgtr_{ij}(t, t&#39;) = -i G^\lessgtr_{ij, \uparrow}(t, t&#39;) G^\lessgtr_{ij, \downarrow}(t, t&#39;).
+    \end{align*}\]</p><p>If we now define the so-called <span>$T$</span>-matrix</p><p class="math-container">\[\begin{align*}
+    \boldsymbol{T}(t, t&#39;) =  \boldsymbol{\Phi}(t, t&#39;) - U \int_{\mathcal{C}}\mathrm{d}s\; \boldsymbol{\Phi}(t, s) \boldsymbol{T}(s, t&#39;),
+\end{align*}\]</p><p>the new self-energies in <span>$T$</span>-matrix approximation become</p><p class="math-container">\[\begin{align*}
+    \Sigma^\lessgtr_{ij, \uparrow}  (t, t&#39;) = \mathrm{i}U^2 T^\lessgtr_{ij}(t, t&#39;) G^\gtrless_{ji, \downarrow}(t&#39;, t),\\
+    \Sigma^\lessgtr_{ij, \downarrow}(t, t&#39;) = \mathrm{i}U^2 T^\lessgtr_{ij}(t, t&#39;)G^\gtrless_{ji, \uparrow}(t&#39;, t),
+\end{align*}\]</p><p>While we keep the <em>same initial conditions</em> as in <a href="../FermiHubbard2B/#FHM_I">Fermi-Hubbard Model I</a>, we intrdoce a new data <code>struct</code> that also holds the <span>$T$</span>-matrix (and the &quot;bubbles&quot; <span>$\Phi$</span> since this is more efficient):</p><pre><code class="language-julia hljs">Base.@kwdef struct FermiHubbardDataTM{T}
+    GL_u::T
+    GG_u::T
+    GL_d::T
+    GG_d::T
+
+    ΣL_u::T = zero(GL_u)
+    ΣG_u::T = zero(GG_u)
+    ΣL_d::T = zero(GL_d)
+    ΣG_d::T = zero(GG_d)
+
+    TL::T = zero(GL_u)
+    TG::T = zero(GG_u)
+
+    ΦL::T = zero(GL_u)
+    ΦG::T = zero(GG_u)
+end
+
+data = FermiHubbardDataTM(GL_u=GL_u, GG_u=GG_u, GL_d=GL_d, GG_d=GG_d)
+
+# Initialize T-matrix
+data.TL[1, 1] = -1.0im .* GL_u[1, 1] .* GL_d[1, 1]
+data.TG[1, 1] = -1.0im .* GG_u[1, 1] .* GG_d[1, 1]
+data.ΦL[1, 1] = data.TL[1, 1]
+data.ΦG[1, 1] = data.TG[1, 1]</code></pre><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>As should be clear from the new definition of the self-energies in terms of the <span>$T$</span>-matrix, the former now contain additional time integrals. This means that at every time step, on top of the Volterra integro-differential equations (VIDEs), we now also have to solve so-called <em>Volterra integral equations</em> (VIEs). Furthermore, it is important for stability reasons to solve these VIEs <em>implicitly</em>. For a more detailed discussion, please consult <a href="https://doi.org/10.21468/SciPostPhysCore.5.2.030">our paper</a>.</p></div></div><p>Accordingly, we introduce an auxiliary fixed-point solver that does this for us:</p><pre><code class="language-julia hljs">function fixed_point(F::Function, x0::AbstractArray; 
+        mixing::Float64=0.5, 
+        abstol::Float64=1e-12, 
+        maxiter::Int=1000, 
+        verbose::Bool=true, 
+        norm=x -&gt; LinearAlgebra.norm(x, Inf)
+    )
+    
+    x_old = copy(x0)
+
+    step = 0
+    while step &lt; maxiter
+        x = F(x_old)
+        res = norm(x - x_old)
+        if verbose
+            @info &quot;step: $step // res: $res&quot;
+        end
+        if res &lt; abstol
+            break
+        end
+        @. x_old = mixing * x + (1.0 - mixing) * x_old
+        step += 1
+    end
+
+    if step == maxiter
+        @warn &quot;No convergence reached.&quot;
+    end
+
+    return x_old
+end</code></pre><p>Instead of writing one ourselves, we could also have worked directly with <a href="https://github.com/JuliaNLSolvers/NLsolve.jl"><code>NLsolve.jl</code></a>. Note that to keep our number of dependencies low, we have opted for not including this by default.</p><p><a href="../FermiHubbard2B/#FHM_I">As in part I</a>, we define our <code>FermiHubbardModel</code>, yet this time with a stronger interaction:</p><pre><code class="language-julia hljs"># Interaction parameter
+const U₀ = 2.0
+model = FermiHubbardModel(U = t -&gt; U₀)</code></pre><p>The previous callback <code>second_Born!</code> is now replaced with the following:</p><pre><code class="language-julia hljs"># Callback function for the self-energies
+function T_matrix!(model, data, times, h1, h2, t, t′)
+    # Unpack data and model
+    (; GL_u, GG_u, GL_d, GG_d, TL, TG, ΣL_u, ΣG_u, ΣL_d, ΣG_d, ΦL, ΦG) = data
+    (; U) = model
+        
+    # Real-time collision integral
+    ∫dt1(A, B, C) = integrate1(h1, t, t′, A, B, C)
+    ∫dt2(A, B, C) = integrate2(h2, t, t′, A, B, C)
+    
+    # Resize self-energies etc. when Green functions are resized
+    if (n = size(GL_u, 3)) &gt; size(ΣL_u, 3)
+        resize!(ΣL_u, n)
+        resize!(ΣG_u, n)
+        resize!(ΣL_d, n)
+        resize!(ΣG_d, n)
+        
+        resize!(TL, n)
+        resize!(TG, n)
+        resize!(ΦL, n)
+        resize!(ΦG, n)
+    end
+    
+    # The interaction varies as a function of the forward time (t+t&#39;)/2
+    U_t = U((times[t] + times[t′])/2)
+    
+    # Set all Φs at the very first t′ since they are all known by then
+    if t′ == 1
+        for t′ in 1:t
+            ΦL[t, t′] = -1.0im .* GL_u[t, t′] .* GL_d[t, t′]
+            ΦG[t, t′] = -1.0im .* GG_u[t, t′] .* GG_d[t, t′]
+        end
+    end   
+
+    # Solve VIEs implicitly
+    TL[t, t′], TG[t, t′] = fixed_point([ΦL[t, t′], ΦG[t, t′]]; mixing=0.5, verbose=false) do x
+        TL[t, t′], TG[t, t′] = x[1], x[2]
+        
+        [
+            ΦL[t, t′] - U_t * (∫dt1(ΦG, ΦL, TL) + ∫dt2(ΦL, TL, TG)),
+            ΦG[t, t′] - U_t * (∫dt1(ΦG, ΦL, TG) + ∫dt2(ΦG, TL, TG))
+        ]
+    end
+    
+    # Define the self-energies
+    ΣL_u[t, t′] = 1.0im .* U_t^2 .* TL[t, t′] .* transpose(GG_d[t′, t])
+    ΣL_d[t, t′] = 1.0im .* U_t^2 .* TL[t, t′] .* transpose(GG_u[t′, t])
+    
+    ΣG_u[t, t′] = 1.0im .* U_t^2 .* TG[t, t′] .* transpose(GL_d[t′, t])
+    ΣG_d[t, t′] = 1.0im .* U_t^2 .* TG[t, t′] .* transpose(GL_u[t′, t])
+end</code></pre><p>For a given final time <code>tmax</code>, and tolerances <code>atol</code> and <code>rtol</code>, <a href="examples/@ref"><code>kbsolve!</code></a> is ready to solve the problem:</p><pre><code class="language-julia hljs"># Call the solver
+sol = kbsolve!(
+        (x...) -&gt; fv!(model, data, x...),
+        (x...) -&gt; fd!(model, data, x...),
+        [data.GL_u, data.GG_u, data.GL_d, data.GG_d],
+        (0.0, tmax);
+        callback = (x...) -&gt; T_matrix!(model, data, x...),
+        atol = atol,
+        rtol = rtol,
+        dtini=1e-10,
+        stop = x -&gt; (println(&quot;t: $(x[end])&quot;); flush(stdout); false)
+    )</code></pre><p>At large <code>tmax=32</code> and with <code>atol = 1e-2 rtol</code>, we obtain</p><p><img src="../../assets/FermiHubbard_II.png" alt="Comparison of T-matrix and second Born approximations for different tolerances"/></p><p>This confirms that the resummation performed by the T-matrix is indeed superior to the second Born approximation in the current regime of large <span>$U$</span> and small occupation numbers!</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../FermiHubbard2B/">« Fermi-Hubbard Model I</a><a class="docs-footer-nextpage" href="../OpenBoseDimer/">Open Bose Dimer »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.23 on <span class="colophon-date" title="Friday 30 December 2022 14:00">Friday 30 December 2022</span>. Using Julia version 1.7.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

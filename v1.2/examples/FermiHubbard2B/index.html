@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Fermi-Hubbard Model I · KadanoffBaym.jl</title><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img class="docs-light-only" src="../../assets/logo.png" alt="KadanoffBaym.jl logo"/><img class="docs-dark-only" src="../../assets/logo-dark.png" alt="KadanoffBaym.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">KadanoffBaym.jl</a></span></div><form class="docs-search" action="../../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../../">Overview</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../TightBindingModel/">Tight-Binding Model</a></li><li class="is-active"><a class="tocitem" href>Fermi-Hubbard Model I</a></li><li><a class="tocitem" href="../FermiHubbardTM/">Fermi-Hubbard Model II</a></li><li><a class="tocitem" href="../OpenBoseDimer/">Open Bose Dimer</a></li><li><a class="tocitem" href="../StochasticProcesses/">Stochastic Processes</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Fermi-Hubbard Model I</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Fermi-Hubbard Model I</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/blob/master/docs/src/examples/FermiHubbard2B.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="FHM_I"><a class="docs-heading-anchor" href="#FHM_I">Fermi-Hubbard Model I</a><a id="FHM_I-1"></a><a class="docs-heading-anchor-permalink" href="#FHM_I" title="Permalink"></a></h1><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>A <a href="https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/blob/master/examples/fermi-hubbard.ipynb">Jupyter notebook</a> related to this example is available in our <a href="https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/tree/master/examples">examples folder</a>.</p></div></div><p>To see <code>KadanoffBaym.jl</code> in full strength, we need to consider an interacting system such as the <em>Fermi-Hubbard</em> model</p><p class="math-container">\[\begin{align*}
+	\hat{H} &amp;= - J \sum_{\langle{i,\,j}\rangle}\sum_\sigma \hat{c}^{\dagger}_{i,\sigma} \hat{c}^{\phantom{\dagger}}_{i+1,\sigma} + U\sum_{i=1}^L  \hat{c}^{\dagger}_{i,\uparrow} \hat{c}^{\phantom{\dagger}}_{i,\uparrow}   \hat{c}^{\dagger}_{i,\downarrow} \hat{c}^{\phantom{\dagger}}_{i,\downarrow}, 
+\end{align*}\]</p><p>where the <span>$\hat{c}_{i,\sigma}^{\dagger},\, \hat{c}_{i,\sigma}^{\phantom{\dagger}}$</span>, <span>$\sigma=\uparrow, \downarrow$</span> are now spin-dependent fermionic creation and annihilation operators. The model describes electrons on a lattice that can hop to neighbouring sites via the coupling <span>$J$</span> while also feeling an on-site interaction <span>$U$</span>. The <em>spin-diagonal</em> Green functions are defined by</p><p class="math-container">\[\begin{align*}
+	\left[\boldsymbol{G}_\sigma^&lt;(t, t&#39;)\right]_{ij} &amp;= G^&lt;_{ij, \sigma}(t, t&#39;) = \phantom{-} \mathrm{i}\left\langle{\hat{c}_{j, \sigma}^{{\dagger}}(t&#39;)\hat{c}_{i, \sigma}^{\phantom{\dagger}}(t)}\right\rangle, \\
+	\left[\boldsymbol{G}_\sigma^&gt;(t, t&#39;)\right]_{ij} &amp;= G^&gt;_{ij, \sigma}(t, t&#39;) = -\mathrm{i}\left\langle{\hat{c}_{i, \sigma}^{\phantom{\dagger}}(t)\hat{c}_{j, \sigma}^{{\dagger}}(t&#39;)}\right\rangle.
+\end{align*}\]</p><p>The equations of motion for these Green functions in &quot;vertical&quot; time <span>$t$</span> can be written compactly as</p><p class="math-container">\[\begin{align*}
+        (\mathrm{i}\partial_t - \boldsymbol{h}) \boldsymbol{G}_\sigma^\lessgtr(t, t&#39;) &amp;= \int_{t_0}^{t}\mathrm{d}{s}  \left[\boldsymbol{\Sigma}_\sigma^&gt;(t, s) - \boldsymbol{\Sigma}_\sigma^&lt;(t, s) \right] \boldsymbol{G}_\sigma^\lessgtr(s, t&#39;) + \int_{t_0}^{t&#39;}\mathrm{d}{s}  \boldsymbol{\Sigma}_\sigma^\lessgtr(t, s) \left[\boldsymbol{G}_\sigma^&lt;(s, t&#39;) - \boldsymbol{G}_\sigma^&gt;(s, t&#39;) \right],
+\end{align*}\]</p><p>where <span>$\boldsymbol{h}$</span> describes the single-particle contributions (i.e. the hopping), and the matrices <span>$\boldsymbol{G}^\lessgtr$</span> are assumed to be block-diagonal in the spin degree-of-freedom. The <em>Hartree-Fock</em> part of the self-energy now is</p><p class="math-container">\[\begin{align*}
+    \Sigma^{\mathrm{HF}}_{\uparrow,\,ij}(t, t&#39;) = {\mathrm{i}}\delta_{ij}\delta(t - t&#39;) G^&lt;_{\downarrow,ii}(t, t),\\
+    \Sigma^{\mathrm{HF}}_{\downarrow,\,ij}(t, t&#39;) = {\mathrm{i}}\delta_{ij}\delta(t - t&#39;) G^&lt;_{\uparrow,ii}(t, t).
+\end{align*}    \]</p><p>In the so-called <em>second Born approximation</em>, the contribution to next order in <span>$U$</span> is also taken into account:</p><p class="math-container">\[\begin{align*}
+    \Sigma^\lessgtr_{ij, \uparrow}  (t, t&#39;) = U^2 G^\lessgtr_{ij, \uparrow}(t, t&#39;) G^\lessgtr_{ij, \downarrow}(t, t&#39;) G^\gtrless_{ji, \downarrow}(t&#39;, t),\\
+    \Sigma^\lessgtr_{ij, \downarrow}(t, t&#39;) = U^2 G^\lessgtr_{ij, \downarrow}(t, t&#39;) G^\lessgtr_{ij, \uparrow}(t, t&#39;) G^\gtrless_{ji, \uparrow}(t&#39;, t).
+\end{align*}\]</p><p>Now that we have the equations set up, we import <code>KadanoffBaym.jl</code> alongside some auxiliary packages:</p><pre><code class="language-julia hljs">using KadanoffBaym, LinearAlgebra, BlockArrays</code></pre><p>Then, we use <code>KadanoffBaym</code>&#39;s built-in data structure <a href="../../#KadanoffBaym.GreenFunction"><code>GreenFunction</code></a> to define our lesser and greater Green functions</p><pre><code class="language-julia hljs"># Lattice size
+L = 8
+
+# Allocate the initial Green functions (time arguments at the end)
+GL_u = GreenFunction(zeros(ComplexF64, L, L, 1, 1), SkewHermitian)
+GG_u = GreenFunction(zeros(ComplexF64, L, L, 1, 1), SkewHermitian)
+GL_d = GreenFunction(zeros(ComplexF64, L, L, 1, 1), SkewHermitian)
+GG_d = GreenFunction(zeros(ComplexF64, L, L, 1, 1), SkewHermitian)</code></pre><p>Observe that we denote <span>$\boldsymbol{G}_\uparrow^&lt;$</span> by <code>GL_u</code> and <span>$\boldsymbol{G}_\downarrow^&lt;$</span> by <code>GL_d</code>, for instance. As a lattice structure, we choose the 8-site <em>3D qubic lattice</em> shown in Fig. 8 of <a href="https://doi.org/10.21468/SciPostPhysCore.5.2.030">our paper</a>.</p><p>As an (arbitrary) Gaussian initial condition, we take a non-equilibrium distribution of the charge over the cube (all electrons at the bottom of the cube):</p><pre><code class="language-julia hljs"># Initial conditions
+N_u = zeros(L)
+N_d = zeros(L)
+
+N_u[1:4] = 0.1 .* [1, 1, 1, 1]
+N_d[1:4] = 0.1 .* [1, 1, 1, 1]
+
+N_u[5:8] = 0.0 .* [1, 1, 1, 1]
+N_d[5:8] = 0.0 .* [1, 1, 1, 1]
+
+GL_u[1, 1] = 1.0im * diagm(N_u)
+GG_u[1, 1] = -1.0im * (I - diagm(N_u))
+GL_d[1, 1] = 1.0im * diagm(N_d)
+GG_d[1, 1] = -1.0im * (I - diagm(N_d))</code></pre><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>Accessing <a href="../../#KadanoffBaym.GreenFunction"><code>GreenFunction</code></a> with only <em>two</em> arguments gives the whole matrix at a given time, i.e. <code>GL_u[1, 1]</code> is equivalent to <code>GL_u[:, :, 1, 1]</code>.</p></div></div><p>To keep our data ordered, we define an auxiliary <code>struct</code> to hold them:</p><pre><code class="language-julia hljs">Base.@kwdef struct FermiHubbardData2B{T}
+    GL_u::T
+    GG_u::T
+    GL_d::T
+    GG_d::T
+
+    ΣL_u::T = zero(GL_u)
+    ΣG_u::T = zero(GG_u)
+    ΣL_d::T = zero(GL_d)
+    ΣG_d::T = zero(GG_d)
+end
+
+data = FermiHubbardData2B(GL_u=GL_u, GG_u=GG_u, GL_d=GL_d, GG_d=GG_d)</code></pre><p>Furthermore, we also defined an auxiliary <code>struct</code> specifying the parameters of the model:</p><pre><code class="language-julia hljs">Base.@kwdef struct FermiHubbardModel{T}
+    # interaction strength
+    U::T
+
+    # 8-site 3D cubic lattice
+    h = begin
+        h = BlockArray{ComplexF64}(undef_blocks, [4, 4], [4, 4])
+        diag_block = [0 -1 0 -1; -1 0 -1 0; 0 -1 0 -1; -1 0 -1 0]
+        setblock!(h, diag_block, 1, 1)
+        setblock!(h, diag_block, 2, 2)
+        setblock!(h, Diagonal(-1 .* ones(4)), 1, 2)
+        setblock!(h, Diagonal(-1 .* ones(4)), 2, 1)
+
+        h |&gt; Array
+    end
+
+    H_u = h
+    H_d = h
+end
+
+# Relatively small interaction parameter
+const U₀ = 0.25
+model = FermiHubbardModel(U = t -&gt; U₀)</code></pre><p>Note how we have defined the interaction parameter <span>$U$</span> as a (constant) Julia <code>Function</code> - this enables us to study quenches with time-dependent interaction (s. also <a href="https://doi.org/10.21468/SciPostPhysCore.5.2.030">our paper</a>).</p><p>The final step before setting up the actual equations is to define a callback function for the self-energies in <em>second Born approximation</em>:</p><pre><code class="language-julia hljs"># Callback function for the self-energies
+function second_Born!(model, data, times, _, _, t, t′)
+    # Unpack data and model
+    (; GL_u, GG_u, GL_d, GG_d, ΣL_u, ΣG_u, ΣL_d, ΣG_d) = data
+    (; U) = model
+        
+    # Resize self-energies when Green functions are resized    
+    if (n = size(GL_u, 3)) &gt; size(ΣL_u, 3)
+        resize!(ΣL_u, n)
+        resize!(ΣG_u, n)
+        resize!(ΣL_d, n)
+        resize!(ΣG_d, n)        
+    end
+    
+    # The interaction varies as a function of the forward time (t+t&#39;)/2
+    U_t = U((times[t] + times[t′])/2)
+    
+    # Define the self-energies
+    ΣL_u[t, t′] = U_t^2 .* GL_u[t, t′] .* GL_d[t, t′] .* transpose(GG_d[t′, t])
+    ΣL_d[t, t′] = U_t^2 .* GL_u[t, t′] .* GL_d[t, t′] .* transpose(GG_u[t′, t])
+    
+    ΣG_u[t, t′] = U_t^2 .* GG_u[t, t′] .* GG_d[t, t′] .* transpose(GL_d[t′, t])
+    ΣG_d[t, t′] = U_t^2 .* GG_u[t, t′] .* GG_d[t, t′] .* transpose(GL_u[t′, t])
+end</code></pre><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>The omitted arguments <code>_</code> in the function definition refer to the <em>adaptive</em> integration weights of <code>KadanoffBaym</code>. They are only needed when the self-energy contains actual time integrals (as in the <span>$T$</span>-matrix approximation).</p></div></div><p>Unlike for the non-interacting <a href="../TightBindingModel/#TightBinding">tight-binding model</a>, the equations of motion above contain <em>integrals</em> over time. This makes them so-called <em>Volterra integro-differential equations</em> (VIDEs). Now the integrals are always either of the <em>first</em> form <span>$\int_{t_0}^{t}\mathrm{d}{s}  \left[\boldsymbol{\Sigma}_\sigma^&gt;(t, s) - \boldsymbol{\Sigma}_\sigma^&lt;(t, s) \right] \boldsymbol{G}_\sigma^\lessgtr(s, t&#39;)$</span> or of the <em>second</em> form <span>$\int_{t_0}^{t&#39;}\mathrm{d}{s}  \boldsymbol{\Sigma}_\sigma^\lessgtr(t, s) \left[\boldsymbol{G}_\sigma^&lt;(s, t&#39;) - \boldsymbol{G}_\sigma^&gt;(s, t&#39;) \right].$</span> The discretization of these time convolutions results in a sum of matrix-products over all time indices. To be as efficient as possible, this suggests to introduce two auxiliary functions that handle these integrations by avoiding unnecessary allocations:</p><pre><code class="language-julia hljs"># Auxiliary integrator for the first type of integral
+function integrate1(hs::Vector, t1, t2, A::GreenFunction, B::GreenFunction, C::GreenFunction; tmax=t1)
+    retval = zero(A[t1, t1])
+
+    @inbounds for k in 1:tmax
+        @views LinearAlgebra.mul!(retval, A[t1, k] - B[t1, k], C[k, t2], hs[k], 1.0)
+    end
+    return retval
+end
+
+# Auxiliary integrator for the second type of integral
+function integrate2(hs::Vector, t1, t2, A::GreenFunction, B::GreenFunction, C::GreenFunction; tmax=t2)
+    retval = zero(A[t1, t1])
+
+    @inbounds for k in 1:tmax
+        @views LinearAlgebra.mul!(retval, A[t1, k], B[k, t2] - C[k, t2], hs[k], 1.0)
+    end
+    return retval
+end</code></pre><div class="admonition is-info"><header class="admonition-header">Note</header><div class="admonition-body"><p>The first argument <code>hs::Vector</code> denotes the <em>adaptive</em> integration weights provided by <code>KadanoffBaym</code>. Since these depend on the boundary points of the integration, there will usually be different weight vectors for the two integrals.</p></div></div><p>We are finally ready to define the equations of motion! In &quot;vertical&quot; time, we have</p><pre><code class="language-julia hljs"># Right-hand side for the &quot;vertical&quot; evolution
+function fv!(model, data, out, times, h1, h2, t, t′)
+    # Unpack data and model
+    (; GL_u, GG_u, GL_u, GG_d, ΣL_u, ΣG_u, ΣL_d, ΣG_d) = data
+    (; H_u, H_d, U) = model
+
+    # Real-time collision integrals
+    ∫dt1(A, B, C) = integrate1(h1, t, t′, A, B, C)
+    ∫dt2(A, B, C) = integrate2(h2, t, t′, A, B, C)
+    
+    # The interaction varies as a function of the forward time (t+t&#39;)/2
+    U_t = U((times[t] + times[t′])/2)
+    
+    # Hartree-Fock self-energies
+    ΣHF_u(t, t′) = im * U_t * Diagonal(GL_d[t, t])
+    ΣHF_d(t, t′) = im * U_t * Diagonal(GL_u[t, t])
+    
+    # Equations of motion
+    out[1] = -1.0im * ((H_u + ΣHF_u(t, t′)) * GL_u[t, t′] + 
+            ∫dt1(ΣG_u, ΣL_u, GL_u) + ∫dt2(ΣL_u, GL_u, GG_u)
+        )
+
+    out[2] = -1.0im * ((H_u + ΣHF_u(t, t′)) * GG_u[t, t′] + 
+            ∫dt1(ΣG_u, ΣL_u, GG_u) + ∫dt2(ΣG_u, GL_u, GG_u)
+        )
+
+    out[3] = -1.0im * ((H_d + ΣHF_d(t, t′)) * GL_d[t, t′] + 
+            ∫dt1(ΣG_d, ΣL_d, GL_d) + ∫dt2(ΣL_d, GL_d, GG_d)
+        )
+
+    out[4] = -1.0im * ((H_d + ΣHF_d(t, t′)) * GG_d[t, t′] +
+            ∫dt1(ΣG_d, ΣL_d, GG_d) + ∫dt2(ΣG_d, GL_d, GG_d)
+        )  
+    
+    return out
+end</code></pre><p>As for the <a href="../TightBindingModel/#TightBinding">tight-binding model</a>, the equation of motion in &quot;diagonal&quot; time <span>$T$</span> follows by subtracting its own adjoint from the vertical equation:</p><pre><code class="language-julia hljs"># Right-hand side for the &quot;diagonal&quot; evolution
+function fd!(model, data, out, times, h1, h2, t, t′)
+    fv!(model, data, out, times, h1, h2, t, t)
+    out .-= adjoint.(out)
+end</code></pre><p>After defining a final time and some tolerances, we give everything to <a href="examples/@ref"><code>kbsolve!</code></a>:</p><pre><code class="language-julia hljs"># final time
+tmax = 4
+
+# tolerances
+atol = 1e-8
+rtol = 1e-6
+
+# Call the solver
+sol = kbsolve!(
+    (x...) -&gt; fv!(model, data, x...),
+    (x...) -&gt; fd!(model, data, x...),
+    [data.GL_u, data.GG_u, data.GL_d, data.GG_d],
+    (0.0, tmax);
+    callback = (x...) -&gt; second_Born!(model, data, x...),
+    atol = atol,
+    rtol = rtol,
+    stop = x -&gt; (println(&quot;t: $(x[end])&quot;); flush(stdout); false)
+)</code></pre><p>That&#39;s it! Results for <code>tmax=32</code> are shown in <a href="https://doi.org/10.21468/SciPostPhysCore.5.2.030">our paper</a>. Note that this implementation via <code>KadanoffBaym</code> is about as compact as possible.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../TightBindingModel/">« Tight-Binding Model</a><a class="docs-footer-nextpage" href="../FermiHubbardTM/">Fermi-Hubbard Model II »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.23 on <span class="colophon-date" title="Friday 30 December 2022 14:00">Friday 30 December 2022</span>. Using Julia version 1.7.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
