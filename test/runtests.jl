@@ -14,4 +14,8 @@ using Test
   @testset "Langreth" begin
     include("langreth.jl")
   end
+
+  @testset "Wigner" begin
+    include("wigner.jl")
+  end
 end
