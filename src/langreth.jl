@@ -4,9 +4,7 @@ abstract type AbstractTimeOrderedGreenFunction end
 """
 struct TimeOrderedGreenFunction <: AbstractTimeOrderedGreenFunction
   L   # Lesser
-  G   # Greater
-  
-  TimeOrderedGreenFunction(L, G) = new(L, G)
+  G   # Greater  
 end
 
 Base.:*(a::Number, g::TimeOrderedGreenFunction) = TimeOrderedGreenFunction(a * lesser(g), a * greater(g))

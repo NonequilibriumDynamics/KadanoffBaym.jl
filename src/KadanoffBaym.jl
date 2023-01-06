@@ -19,7 +19,7 @@ include("wigner.jl")
 export wigner_transform
 
 include("langreth.jl")
-export TimeOrderedGreenFunction, TimeOrderedConvolution, conv
+export TimeOrderedGreenFunction, conv
 export greater, lesser, advanced, retarded
 
 end # module

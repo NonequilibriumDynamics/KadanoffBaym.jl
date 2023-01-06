@@ -76,7 +76,7 @@ end
 
 function GreenFunction(G::AbstractArray, U::Type{<:AbstractSymmetry})
   if U <: Union{Symmetrical,SkewHermitian}
-    @assert ==(last2(size(G))...) "Time dimension ($(last2(size(G)))) must be a square"
+    @assert ==(last2(size(G)...)...) "Time dimension ($(last2(size(G)...))) must be a square"
   end
   return GreenFunction{eltype(G),ndims(G),typeof(G),U}(G)
 end
@@ -94,8 +94,8 @@ Base.@propagate_inbounds Base.getindex(G::GreenFunction{T,N,A,U}, I::Vararg{T1,N
 
 @inline Base.setindex!(::GreenFunction{T,N,A,U}, v, I) where {T,N,A,U} = error("Single indexing not allowed")
 Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,U}, v, I::Vararg{T1,N1}) where {T,N,A,U,T1,N1}
-  ts = last2(I)
-  jj = front2(I)
+  ts = last2(I...)
+  jj = front2(I...)
 
   if ==(ts...)
     G.data[ntuple(i -> Colon(), N-N1)..., jj..., ts...] = v
@@ -118,12 +118,6 @@ for g in (:GreenFunction,)
       @eval (Base.$f)(G::$g{T,N,A,U}, b::Number) where {T,N,A,U} = $g(Base.$f(G.data, b), U)
     end
   end
-
-  for f in (:+, :-, :\, :/, :*)
-    @eval (Base.$f)(G1::$g{T,N,A,U}, G2::$g{T,N,A,U}) where {T,N,A,U} = $g(Base.$f(G1.data, G2.data), U)
-  end
-
-  @eval Base.:+(G::$g{T,N,A,U}, Gs::$g{T,N,A,U}...) where {T,N,A,U} = Base .+ (G.data, getfield.(Gs, :data)...)
 end
 
 function Base.show(io::IO, x::GreenFunction)
@@ -146,7 +140,7 @@ end
 Base.resize!(A::GreenFunction, t::Int) = (A.data = _resize!(A.data, t); A)
 
 function _resize!(a::Array{T,N}, t::Int) where {T,N}
-  a′ = Array{T,N}(undef, front2(size(a))..., t, t)
+  a′ = Array{T,N}(undef, front2(size(a)...)..., t, t)
 
   k = min(last(size(a)), t)
   for t in 1:k, t′ in 1:k
