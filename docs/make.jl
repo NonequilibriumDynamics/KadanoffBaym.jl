@@ -1,4 +1,4 @@
-using Documenter, KadanoffBaym, FFTW, Interpolations
+using Documenter, KadanoffBaym
 
 makedocs(
     sitename="KadanoffBaym.jl",

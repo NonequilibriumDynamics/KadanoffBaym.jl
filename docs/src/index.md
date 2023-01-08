@@ -3,7 +3,7 @@
 `KadanoffBaym.jl` is the first fully *adaptive* solver for Kadanoff-Baym equations written in Julia. 
 
 !!! tip
-	To learn more about the solver and Kadanoff-Baym equations, have a look into our [accompanying paper](https://doi.org/10.21468/SciPostPhysCore.5.2.030).`
+	To learn more about the solver and Kadanoff-Baym equations, have a look into our [accompanying paper](https://doi.org/10.21468/SciPostPhysCore.5.2.030).
 
 ## Installation
 
@@ -13,7 +13,12 @@ To install, use Julia's built-in package manager
 julia> ] add KadanoffBaym
 ```
 
-The most recent version of `KadanoffBaym.jl` requires Julia `v1.7` or later.
+## Scalability
+
+For now, `KadanoffBaym.jl` is restricted to run on a single machine, for which the maximum number of threads available will be used. You can set this number by running Julia with the `thread` [flag](https://docs.julialang.org/en/v1/manual/multi-threading/#man-multithreading)
+```
+julia -t auto
+```
 
 ## Examples
 
@@ -28,7 +33,7 @@ To learn how to work with `KadanoffBaym.jl`, there are two options:
 
 ## Library
 
-`KadanoffBaym.jl` was designed to be lean and simple and hence only exports a handful of functions, namely [`GreenFunction`](@ref) (together with two possible time symmetries, `Symmetrical` and `SkewHermitian`) and the integrator [`kbsolve!`](@ref).
+`KadanoffBaym.jl` was designed to be lean and simple and hence only exports a handful of functions, namely [`GreenFunction`](@ref) (together with two possible time symmetries, `Symmetrical` and `SkewHermitian`) and the integrator [`kbsolve!`](@ref). Besides these, [`wigner_transform`](@ref) can be used to analyze data in a Wigner(-Ville) transformed basis and [`TimeOrderedGreenFunction`](@ref) to quickly compute the Keldysh components (`greater`, `lesser`, `retarded` and `advanced`) of time [`conv`](@ref)olutions via the Langreth rules.
 
 !!! note
 	You need to import an FFT library -- e.g., `FFTW` -- to use `wigner_transform`.
@@ -42,7 +47,7 @@ To learn how to work with `KadanoffBaym.jl`, there are two options:
 ### Solver
 
 ```@docs
-kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax))
+kbsolve!(fv!, fd!, u0, (t0, tmax))
 ```
 
 ### Green Functions
@@ -51,10 +56,19 @@ kbsolve!(fv!, fd!, u0::Vector{<:GreenFunction}, (t0, tmax))
 GreenFunction{T,N,A,U<:AbstractSymmetry}
 ```
 
-#### Wigner Transformation
+### Wigner Transformation
 
 ```@docs
 wigner_transform(x::AbstractMatrix)
+```
+
+### Langreth's rules
+```@docs
+TimeOrderedGreenFunction
+```
+
+```@docs
+conv(L, R, ws)
 ```
 
 ## Citation

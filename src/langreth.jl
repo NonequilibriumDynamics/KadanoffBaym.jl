@@ -1,6 +1,13 @@
 abstract type AbstractTimeOrderedGreenFunction end
 
 """
+    TimeOrderedGreenFunction(L::AbstractMatrix, G::AbstractMatrix)
+
+A simple time-ordered Green function structure for a hassle-free computation of the Langreth rules.
+
+# Parameters
+  - `L::AbstractMatrix`: The *lesser* component
+  - `G::AbstractMatrix`: The *greater* component
 """
 struct TimeOrderedGreenFunction <: AbstractTimeOrderedGreenFunction
   L   # Lesser
@@ -13,15 +20,23 @@ Base.:+(g1::TimeOrderedGreenFunction, g2::TimeOrderedGreenFunction) = TimeOrdere
 """
 """
 struct TimeOrderedConvolution{TA<:AbstractTimeOrderedGreenFunction, TB<:AbstractTimeOrderedGreenFunction} <: AbstractTimeOrderedGreenFunction
-  A::TA
-  B::TB
-  dts::UpperTriangular
+  L::TA
+  R::TB
+  ws::UpperTriangular
 end
 
 """
+    conv(L::AbstractTimeOrderedGreenFunction, R::AbstractTimeOrderedGreenFunction, ws::UpperTriangular)
+
+Calculates a time-convolution between time-ordered Green functions through the Langreth rules.
+
+# Parameters
+  - `L::AbstractTimeOrderedGreenFunction`: The left time-ordered Green function
+  - `R::AbstractTimeOrderedGreenFunction`: The right time-ordered Green function
+  - `ws::UpperTriangular`: An upper-triangular weight matrix containing the integration weights
 """
-function conv(A::AbstractTimeOrderedGreenFunction, B::AbstractTimeOrderedGreenFunction, dts)
-  c = TimeOrderedConvolution(A, B, dts)
+function conv(L::AbstractTimeOrderedGreenFunction, R::AbstractTimeOrderedGreenFunction, ws::UpperTriangular)
+  c = TimeOrderedConvolution(L, R, ws)
   return TimeOrderedGreenFunction(lesser(c), greater(c))
 end
 
@@ -31,5 +46,5 @@ lesser(g::TimeOrderedGreenFunction) = g.L
 advanced(g::TimeOrderedGreenFunction) = UpperTriangular(lesser(g) - greater(g))
 retarded(g::TimeOrderedGreenFunction) = adjoint(advanced(g))
 
-greater(g::TimeOrderedConvolution) = (retarded(g.A) .* adjoint(g.dts)) * greater(g.B) + greater(g.A) * (g.dts .* advanced(g.B)) |> skew_hermitify!
-lesser(g::TimeOrderedConvolution) = (retarded(g.A) .* adjoint(g.dts)) * lesser(g.B) + lesser(g.A) * (g.dts .* advanced(g.B)) |> skew_hermitify!
+greater(c::TimeOrderedConvolution) = (retarded(c.L) .* adjoint(c.ws)) * greater(c.R) + greater(c.L) * (c.ws .* advanced(c.R)) |> skew_hermitify!
+lesser(c::TimeOrderedConvolution) = (retarded(c.L) .* adjoint(c.ws)) * lesser(c.R) + lesser(c.L) * (c.ws .* advanced(c.R)) |> skew_hermitify!
