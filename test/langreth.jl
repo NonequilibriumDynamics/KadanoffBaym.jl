@@ -54,8 +54,10 @@ b = let
   TimeOrderedGreenFunction(x - x', y - y') # Skew-symmetric L and G components
 end
 
-dts = reduce(hcat, ([KadanoffBaym.calculate_weights(ts[1:i], ones(Int64, i-1)); zeros(length(ts)-i)] for i in eachindex(ts))) |> UpperTriangular
-
+dts = let
+  ws = KadanoffBaym.initialize_weights(ts) # Trapezium rule by default
+  reduce(hcat, [[w; zeros(length(ts) - length(w))] for w in ws]) |> UpperTriangular
+end
 ⋆(a, b) = conv(a, b, dts)
 
 @testset "Langreth's rules" begin

@@ -57,11 +57,11 @@ end
 
   G = GreenFunction(ones(1, 1), Symmetrical)
 
-  kb = kbsolve!(fv!, fd!, [G], (0.0, 30.0); atol=atol, rtol=rtol, kmax_vie = 4)
+  kb = kbsolve!(fv!, fd!, [G], (0.0, 30.0); atol=atol, rtol=rtol)
 
   sol(t) = cos(t) + sin(t)
 
-  @test G[:, 1] ≈ [sol(t1) for t1 in kb.t] atol = atol rtol = 5e0rtol
+  @test G[:, 1] ≈ [sol(t1) for t1 in kb.t] atol = atol rtol = rtol
 end
 
 @testset "2-time benchmark" begin
@@ -83,7 +83,7 @@ end
 
   sol(t, t′) = -1.0im * exp(-1.0im * sin(λ * (t - t′)))
 
-  @test L.data ≈ [sol(t1, t2) for t1 in kb.t, t2 in kb.t] atol = 1e1atol rtol = 1e1rtol
+  @test L.data ≈ [sol(t1, t2) for t1 in kb.t, t2 in kb.t] atol = atol rtol = rtol
 end
 
 @testset "2-time Volterra benchmark" begin
@@ -110,5 +110,5 @@ end
 
   sol_ = hcat([vcat(sol.(kb.t[i] .- kb.t[1:i]), sol.(kb.t[(1 + i):length(kb.t)] .- kb.t[i])) for i in eachindex(kb.t)]...)
 
-  @test G.data ≈ sol_ atol = 1e1atol rtol = 2e1rtol
+  @test G.data ≈ sol_ atol = atol rtol = 6e0rtol
 end
