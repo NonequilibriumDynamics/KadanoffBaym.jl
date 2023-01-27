@@ -175,7 +175,7 @@ function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ,
       foreach(v -> resize!(v, l), state.v)
     end
     push!(state.t, last(state.t) + dt)
-    update_weights!(state.w, state.t, min(cache.k, kmax_vie))
+    push!(state.w, update_weights(last(state.w), state.t, min(cache.k, kmax_vie)))
     return true
   end
 end
