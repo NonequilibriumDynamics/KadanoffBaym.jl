@@ -118,7 +118,7 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
     u_next = predict!(cache, state.t)
     foreach((u, u′) -> foreach(t2 -> u[t1, t2] = u′[t2], 1:t1), state.u, u_next.u)
     if !isempty(state.v)
-      u_next = predict!(cache_v, state.t; update_dt = false)
+      u_next = predict!(cache_v, state.t)
       foreach((v, v′) -> v[t1] = v′[1], state.v, u_next.u)
     end
     foreach(t2 -> callback(state.t, state.w[t1], state.w[t2], t1, t2), 1:t1)

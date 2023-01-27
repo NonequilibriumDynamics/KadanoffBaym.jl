@@ -1,5 +1,23 @@
 # ODE norm: Section II.4 (4.11)
-norm(x, y=nothing) = OrdinaryDiffEq.ODE_DEFAULT_NORM(x, y)
+# norm(x, y=nothing) = OrdinaryDiffEq.ODE_DEFAULT_NORM(x, y)
+@inline norm(u, y=nothing) = LinearAlgebra.norm(u) / sqrt(total_length(u))
+@inline total_length(u::Number) = length(u)
+@inline total_length(u::AbstractArray{<:Number}) = length(u)
+@inline total_length(u::AbstractArray{<:AbstractArray}) = sum(total_length, u)
+@inline total_length(u::OrdinaryDiffEq.VectorOfArray) = sum(total_length, u.u)
+
+# Error estimation and norm: Section II.4 Eq. (4.11)
+@inline function calculate_residuals!(out::AbstractArray, ũ::AbstractArray, u₀::AbstractArray, u₁::AbstractArray, atol, rtol, norm)
+  @. out = calculate_residuals!(out, ũ, u₀, u₁, atol, rtol, norm)
+  return out
+end
+@inline function calculate_residuals!(out::AbstractArray{<:Number}, ũ::AbstractArray{<:Number}, u₀::AbstractArray{<:Number}, u₁::AbstractArray{<:Number}, atol, rtol, norm)
+  @. out = calculate_residuals(ũ, u₀, u₁, atol, rtol, norm)
+  return out
+end
+@inline function calculate_residuals(ũ::Number, u₀::Number, u₁::Number, atol::Real, rtol::Real, norm)
+  return ũ / (atol + max(norm(u₀), norm(u₁)) * rtol)
+end
 
 # Starting Step Size: Section II.4
 function initial_step(f0, u0, atol, rtol)
