@@ -69,7 +69,7 @@ For illustration, we use a Hamiltonian matrix ``\boldsymbol{H}`` with unit hoppi
 ε = 5e-2
 
 # Hamiltonian with on-site energies and nearest-neighbour hopping
-H = SymTridiagonal([ε * (i-1) for i in 1:dim], -ones(dim))
+H = SymTridiagonal([ε * (i-1) for i in 1:L], -ones(L))
 ```
 
 We define the equation of motion in the "vertical" time ``t`` as
@@ -94,7 +94,7 @@ Note that the unused arguments `times, h1, h2` are indeed only necessary when so
 # Call the solver
 @time sol = kbsolve!(fv!, fd!, [GL, GG], (0.0, 20.0); atol=1e-8, rtol=1e-6)
 ```
-When we plot `[imag(GL.data[i, i, t, t]) for t in 1:length(sol.t)]` for `i` in `1:L`, we obtain
+When we `plot(sol.t, mapreduce(permutedims, vcat, [imag(diag(GL[t, t])) for t in eachindex(sol.t)]))`, we obtain
 
 ![Time-dependent occupations numbers of a ten-site tight-binding model](../assets/TightBinding.png)
 
