@@ -8,7 +8,7 @@ import OrdinaryDiffEq
 include("utils.jl")
 
 include("gf.jl")
-export GreenFunction, Symmetrical, SkewHermitian
+export GreenFunction, Symmetrical, SkewHermitian, OnePoint
 
 include("vie.jl")
 include("vcabm.jl")

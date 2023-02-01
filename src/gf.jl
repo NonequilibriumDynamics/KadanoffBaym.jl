@@ -19,6 +19,11 @@ Defined as
 """
 struct SkewHermitian <: AbstractSymmetry end
 
+"""
+    OnePoint
+"""
+struct OnePoint <: KadanoffBaym.AbstractSymmetry end
+
 @inline symmetry(::Type{<:AbstractSymmetry}) = error("Not defined")
 @inline symmetry(::Type{Symmetrical}) = transpose
 @inline symmetry(::Type{SkewHermitian}) = (-) ∘ adjoint
@@ -105,6 +110,12 @@ Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,U}, v, I
   end
 end
 
+Base.@propagate_inbounds Base.getindex(G::GreenFunction{T,N,A,OnePoint}, I::Vararg{T1,N1}) where {T,N,A,T1,N1} = G.data[ntuple(i -> Colon(), N-N1)..., I...]
+
+Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,OnePoint}, v, I::Vararg{T1,N1}) where {T,N,A,T1,N1}
+  G.data[ntuple(i -> Colon(), N-N1)..., Base.front(I)..., last(I)] = v
+end
+
 for g in (:GreenFunction,)
   for f in (:-, :conj, :real, :imag, :adjoint, :transpose, :zero)
     @eval (Base.$f)(G::$g{T,N,A,U}) where {T,N,A,U} = $g(Base.$f(G.data), U)
@@ -148,6 +159,18 @@ function _resize!(a::Array{T,N}, t::Int) where {T,N}
   end
 
   return a′
+end
+
+function Base.resize!(g::GreenFunction{T,N,A,OnePoint}, t::Int) where {T,N,A}
+  a′ = Array{T,N}(undef, Base.front(size(g))..., t)
+
+  k = min(last(size(g)), t)
+  for t in 1:k
+    a′[ntuple(i -> Colon(), N-1)..., t] = g[t]
+  end
+
+  g.data = a′
+  return g
 end
 
 """

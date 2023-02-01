@@ -22,7 +22,7 @@
   L = GreenFunction(1im * ones(ComplexF64, 1, 1), SkewHermitian)
 
   # one-time initial conditions
-  J = ComplexF64[1.0]
+  J = GreenFunction(ones(ComplexF64, 1, 1), OnePoint)
 
   kb = kbsolve!(fv!, fd!, [G, L], (0.0, 30.0); atol=atol, rtol=rtol, v0 = [J,], f1! =f1!)
 
@@ -39,7 +39,7 @@
   @testset begin
     @test G[:, 1] ≈ [sol1(t1, L[1, 1], G[1, 1]) for t1 in kb.t] atol = atol rtol = rtol
     @test L[:, 1] ≈ [sol2(t1, L[1, 1], G[1, 1]) for t1 in kb.t] atol = atol rtol = rtol
-    @test real(J) ≈ cos.(kb.t) atol = atol rtol = rtol
+    @test real(J).data[:] ≈ cos.(kb.t) atol = atol rtol = rtol
   end
 end
 
