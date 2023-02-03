@@ -3,7 +3,7 @@ module KadanoffBaym
 using LinearAlgebra
 using SpecialMatrices
 using AbstractFFTs
-import OrdinaryDiffEq
+using RecursiveArrayTools
 
 include("utils.jl")
 

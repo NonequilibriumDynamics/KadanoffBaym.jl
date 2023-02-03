@@ -1,6 +1,6 @@
 # Part of the following code is licensed under the MIT "Expact" Lience, 
 # from https://github.com/SciML/OrdinaryDiffEq.jl
-mutable struct VCABMCache{T,U} <: OrdinaryDiffEq.OrdinaryDiffEqMutableCache
+mutable struct VCABMCache{T,U}
   u_prev::U
   u_next::U
   u_erro::U
@@ -48,7 +48,7 @@ end
 function correct!(cache::VCABMCache, f)
   (; u_next, g, ϕ_np1, ϕstar_n, k) = cache
   @inbounds begin
-    OrdinaryDiffEq.ϕ_np1!(cache, f(), k + 1)
+    ϕ_np1!(cache, f(), k + 1)
     @. u_next = muladd(g[k], ϕ_np1[k], u_next)
   end
   return u_next
@@ -83,14 +83,12 @@ function adjust!(cache::VCABMCache, cache_v, times, f2, f1, kmax, atol, rtol)
       if max(error_k2, error_k1) <= cache.error_k
         cache.k = k - 1
       else
-        OrdinaryDiffEq.ϕ_np1!(cache, cache.f_prev, k + 2)
-
+        ϕ_np1!(cache, cache.f_prev, k + 2)
         if !isnothing(cache_v)
-          OrdinaryDiffEq.expand_ϕ_and_ϕstar!(cache_v, k+1)
-          OrdinaryDiffEq.ϕ_np1!(cache_v, cache_v.f_prev, k + 2)
+          ϕ_np1!(cache_v, cache_v.f_prev, k + 2)
         end
         calculate_residuals!(u_erro, ϕ_np1[k + 2], u_prev, u_next, atol, rtol, norm)
-        error_kstar = norm((times[end] - times[end - 1]) * OrdinaryDiffEq.γstar[k + 2]) * norm(u_erro)
+        error_kstar = norm((times[end] - times[end - 1]) * γstar[k + 2]) * norm(u_erro)
         if error_kstar < cache.error_k
           cache.k = min(k + 1, kmax)
           cache.error_k = one(cache.error_k)   # constant dt
@@ -108,10 +106,10 @@ function adjust!(cache::VCABMCache, cache_v, times, f2, f1, kmax, atol, rtol)
   end
 end
 
-function extend!(cache::VCABMCache, state, fv!)
+function extend!(cache::VCABMCache, times, fv!)
   (; f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, error_k) = cache
   @inbounds begin
-    t = length(state.t) - 1 # `t` from the last iteration
+    t = length(times) - 1 # `t` from the last iteration
     k = t == cache.k ? cache.k - 1 : cache.k
 
     if error_k > one(error_k)
@@ -129,7 +127,7 @@ function extend!(cache::VCABMCache, state, fv!)
     # is smooth and the solver does not stall.
     for k′ in 1:k
       fv!(max(1, t - 1 - k + k′), t) # result is stored in f_next
-      ϕ_and_ϕstar!((f_prev=f_next[t, :], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(state.t, 1:(t - k + k′)), k′)
+      ϕ_and_ϕstar!((f_prev=f_next[t, :], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
       _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
     end
 
@@ -186,3 +184,18 @@ function g_coeffs!(cache, times, k)
     end
   end
 end
+
+function ϕ_np1!(cache, du_np1, k)
+  (; ϕ_np1, ϕstar_n) = cache
+  @inbounds begin
+    for i in 1:k
+      if i != 1
+        @. ϕ_np1[i] = ϕ_np1[i - 1] - ϕstar_n[i - 1]
+      else
+        @. ϕ_np1[i] = du_np1
+      end
+    end
+  end
+end
+
+const γstar = [1, -1 / 2, -1 / 12, -1 / 24, -19 / 720, -3 / 160, -863 / 60480, -275 / 24192, -33953 / 3628800, -0.00789255, -0.00678585, -0.00592406, -0.00523669, -0.0046775, -0.00421495, -0.0038269]

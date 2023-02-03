@@ -74,12 +74,12 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
   # Holds the information necessary to integrate
   cache = let
     t1 = length(state.t)
-    VCABMCache{eltype(state.t)}(kmax, OrdinaryDiffEq.VectorOfArray([[u[t1, t2] for t2 in 1:t1] for u in state.u]))
+    VCABMCache{eltype(state.t)}(kmax, VectorOfArray([[u[t1, t2] for t2 in 1:t1] for u in state.u]))
   end
 
   cache_v = isempty(state.v) ? nothing : let
     t1 = length(state.t)
-    cache_v = VCABMCache{eltype(state.t)}(kmax, OrdinaryDiffEq.VectorOfArray([[v[t1],] for v in state.v]))
+    cache_v = VCABMCache{eltype(state.t)}(kmax, VectorOfArray([[v[t1],] for v in state.v]))
     cache_v.dts = cache.dts
     cache_v
   end
@@ -112,7 +112,7 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
     t1 = length(state.t)
 
     # Extend the caches to accomodate the new time column
-    extend!(cache, state, f2v!)
+    extend!(cache, state.t, f2v!)
 
     # Predictor
     u_next = predict!(cache, state.t)
