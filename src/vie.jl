@@ -11,6 +11,7 @@ function update_weights(ws, ts, k)
   push!(ws, zero(eltype(ws)))
   l = length(ts)
   r = max(1, l - k):l
-  ws[r] += Vandermonde(ts[r])' \ [(ts[l]^j - ts[l-1]^j) / j for j in eachindex(r)]
+  t0 = ts[r[1]] # This subtraction controls large numerical errors when `ts` >> 1. For large Δts, switch to weight integration (see previous implementation)
+  ws[r] += Vandermonde(ts[r] .- t0)' \ [((ts[l] - t0)^j - (ts[l-1] - t0)^j) / j for j in eachindex(r)]
   return ws
 end
