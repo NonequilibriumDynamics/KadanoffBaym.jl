@@ -112,7 +112,7 @@ function extend!(cache::VCABMCache, state, fv!)
   (; f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, error_k) = cache
   @inbounds begin
     t = length(state.t) - 1 # `t` from the last iteration
-    k = cache.k
+    k = t == cache.k ? cache.k - 1 : cache.k
 
     if error_k > one(error_k)
       return
