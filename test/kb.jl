@@ -22,7 +22,7 @@
   L = GreenFunction(1im * ones(ComplexF64, 1, 1), SkewHermitian)
 
   # one-time initial conditions
-  J = ComplexF64[1.0]
+  J = GreenFunction(ones(ComplexF64, 1, 1), OnePoint)
 
   kb = kbsolve!(fv!, fd!, [G, L], (0.0, 30.0); atol=atol, rtol=rtol, v0 = [J,], f1! =f1!)
 
@@ -39,7 +39,7 @@
   @testset begin
     @test G[:, 1] ≈ [sol1(t1, L[1, 1], G[1, 1]) for t1 in kb.t] atol = atol rtol = rtol
     @test L[:, 1] ≈ [sol2(t1, L[1, 1], G[1, 1]) for t1 in kb.t] atol = atol rtol = rtol
-    @test real(J) ≈ cos.(kb.t) atol = atol rtol = rtol
+    @test real(J).data[:] ≈ cos.(kb.t) atol = atol rtol = rtol
   end
 end
 
@@ -61,7 +61,7 @@ end
 
   sol(t) = cos(t) + sin(t)
 
-  @test G[:, 1] ≈ [sol(t1) for t1 in kb.t] atol = atol rtol = 5e0rtol
+  @test G[:, 1] ≈ [sol(t1) for t1 in kb.t] atol = atol rtol = 2e0rtol
 end
 
 @testset "2-time benchmark" begin
@@ -83,7 +83,7 @@ end
 
   sol(t, t′) = -1.0im * exp(-1.0im * sin(λ * (t - t′)))
 
-  @test L.data ≈ [sol(t1, t2) for t1 in kb.t, t2 in kb.t] atol = 1e1atol rtol = 1e1rtol
+  @test L.data ≈ [sol(t1, t2) for t1 in kb.t, t2 in kb.t] atol = atol rtol = 2e0rtol
 end
 
 @testset "2-time Volterra benchmark" begin
@@ -110,5 +110,5 @@ end
 
   sol_ = hcat([vcat(sol.(kb.t[i] .- kb.t[1:i]), sol.(kb.t[(1 + i):length(kb.t)] .- kb.t[i])) for i in eachindex(kb.t)]...)
 
-  @test G.data ≈ sol_ atol = 1e1atol rtol = 2e1rtol
+  @test G.data ≈ sol_ atol = atol rtol = 2e1rtol
 end
