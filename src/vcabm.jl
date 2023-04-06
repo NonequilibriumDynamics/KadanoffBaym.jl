@@ -1,6 +1,6 @@
 # Part of the following code is licensed under the MIT "Expact" Lience, 
 # from https://github.com/SciML/OrdinaryDiffEq.jl
-mutable struct VCABMCache{T,U} <: OrdinaryDiffEq.OrdinaryDiffEqMutableCache
+mutable struct VCABMCache{T,U}
   u_prev::U
   u_next::U
   u_erro::U
@@ -31,18 +31,11 @@ mutable struct VCABMCache{T,U} <: OrdinaryDiffEq.OrdinaryDiffEqMutableCache
 end
 
 # Explicit Adams: Section III.5 Eq. (5.5)
-function predict!(cache::VCABMCache, times; update_dt = true)
+function predict!(cache::VCABMCache, times)
   (; u_prev, u_next, g, ϕstar_n, k) = cache
   @inbounds begin
-    if update_dt && cache.error_k <= one(cache.error_k)
-      for i = (length(cache.dts) - 1):-1:1
-        cache.dts[i+1] = cache.dts[i]
-      end
-      cache.dts[1] = times[end] - times[end - 1]
-    end
-
-    OrdinaryDiffEq.ϕ_and_ϕstar!(cache, cache.f_prev, k)
-    OrdinaryDiffEq.g_coefs!(cache, k + 1)
+    ϕ_and_ϕstar!(cache, times, k + 1 == length(times) ? k : k + 1)
+    g_coeffs!(cache, times, k + 1 == length(times) ? k : k + 1)
     @. u_next = muladd(g[1], ϕstar_n[1], u_prev)
     for i in 2:(k - 1)
       @. u_next = muladd(g[i], ϕstar_n[i], u_next)
@@ -55,7 +48,7 @@ end
 function correct!(cache::VCABMCache, f)
   (; u_next, g, ϕ_np1, ϕstar_n, k) = cache
   @inbounds begin
-    OrdinaryDiffEq.ϕ_np1!(cache, f(), k + 1)
+    ϕ_np1!(cache, f(), k + 1)
     @. u_next = muladd(g[k], ϕ_np1[k], u_next)
   end
   return u_next
@@ -66,7 +59,7 @@ function adjust!(cache::VCABMCache, cache_v, times, f2, f1, kmax, atol, rtol)
   (; u_prev, u_next, g, ϕ_np1, ϕstar_n, k, u_erro) = cache
   @inbounds begin
     # Calculate error: Section III.7 Eq. (7.3)
-    OrdinaryDiffEq.calculate_residuals!(u_erro, ϕ_np1[k + 1], u_prev, u_next, atol, rtol, norm, nothing)
+    calculate_residuals!(u_erro, ϕ_np1[k + 1], u_prev, u_next, atol, rtol, norm)
     cache.error_k = norm(g[k + 1] - g[k]) * norm(u_erro)
 
     # Fail step: Section III.7 Eq. (7.4)
@@ -82,23 +75,20 @@ function adjust!(cache::VCABMCache, cache_v, times, f2, f1, kmax, atol, rtol)
     if length(times) <= 5 || k < 3
       cache.k = min(k + 1, 3, kmax)
     else
-      OrdinaryDiffEq.calculate_residuals!(u_erro, ϕ_np1[k], u_prev, u_next, atol, rtol, norm, nothing)
+      calculate_residuals!(u_erro, ϕ_np1[k], u_prev, u_next, atol, rtol, norm)
       error_k1 = norm(g[k] - g[k - 1]) * norm(u_erro)
-      OrdinaryDiffEq.calculate_residuals!(u_erro, ϕ_np1[k - 1], u_prev, u_next, atol, rtol, norm, nothing)
+      calculate_residuals!(u_erro, ϕ_np1[k - 1], u_prev, u_next, atol, rtol, norm)
       error_k2 = norm(g[k - 1] - g[k - 2]) * norm(u_erro)
 
       if max(error_k2, error_k1) <= cache.error_k
         cache.k = k - 1
       else
-        OrdinaryDiffEq.expand_ϕ_and_ϕstar!(cache, k+1)
-        OrdinaryDiffEq.ϕ_np1!(cache, cache.f_prev, k + 2)
-
+        ϕ_np1!(cache, cache.f_prev, k + 2)
         if !isnothing(cache_v)
-          OrdinaryDiffEq.expand_ϕ_and_ϕstar!(cache_v, k+1)
-          OrdinaryDiffEq.ϕ_np1!(cache_v, cache_v.f_prev, k + 2)
+          ϕ_np1!(cache_v, cache_v.f_prev, k + 2)
         end
-        OrdinaryDiffEq.calculate_residuals!(u_erro, ϕ_np1[k + 2], u_prev, u_next, atol, rtol, norm, nothing)
-        error_kstar = norm((times[end] - times[end - 1]) * OrdinaryDiffEq.γstar[k + 2]) * norm(u_erro)
+        calculate_residuals!(u_erro, ϕ_np1[k + 2], u_prev, u_next, atol, rtol, norm)
+        error_kstar = norm((times[end] - times[end - 1]) * γstar[k + 2]) * norm(u_erro)
         if error_kstar < cache.error_k
           cache.k = min(k + 1, kmax)
           cache.error_k = one(cache.error_k)   # constant dt
@@ -116,11 +106,11 @@ function adjust!(cache::VCABMCache, cache_v, times, f2, f1, kmax, atol, rtol)
   end
 end
 
-function extend!(cache::VCABMCache, state, fv!)
+function extend!(cache::VCABMCache, times, fv!)
   (; f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, error_k) = cache
   @inbounds begin
-    t = length(state.t) - 1 # `t` from the last iteration
-    k = isone(cache.k) ? 0 : state.w.ks[end-1] # `k` from the last iteration
+    t = length(times) - 1 # `t` from the last iteration
+    k = t == cache.k ? cache.k - 1 : cache.k
 
     if error_k > one(error_k)
       return
@@ -137,7 +127,7 @@ function extend!(cache::VCABMCache, state, fv!)
     # is smooth and the solver does not stall.
     for k′ in 1:k
       fv!(max(1, t - 1 - k + k′), t) # result is stored in f_next
-      OrdinaryDiffEq.ϕ_and_ϕstar!((dts=view(cache.dts,1+(k-k′):13), ϕstar_nm1=_ϕstar_nm1, ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, β = cache.β), f_next[t, :], k′)
+      ϕ_and_ϕstar!((f_prev=f_next[t, :], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
       _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
     end
 
@@ -158,3 +148,54 @@ function extend!(cache::VCABMCache, state, fv!)
     end
   end
 end
+
+# Section III.5: Eq (5.9-5.10)
+function ϕ_and_ϕstar!(cache, times, k)
+  (; f_prev, ϕstar_nm1, ϕ_n, ϕstar_n) = cache
+  @inbounds begin
+    t = reverse(times)
+    β = one(eltype(times))
+    ϕ_n[1] .= f_prev
+    ϕstar_n[1] .= f_prev
+    for i in 2:k
+      β = β * (t[1] - t[i]) / (t[2] - t[i + 1])
+      @. ϕ_n[i] = ϕ_n[i - 1] - ϕstar_nm1[i - 1]
+      @. ϕstar_n[i] = β * ϕ_n[i]
+    end
+  end
+end
+
+function g_coeffs!(cache, times, k)
+  (; c, g) = cache
+  @inbounds begin
+    t = reverse(times)
+    dt = t[1] - t[2]
+    for i in 1:k
+      for q in 1:(k - (i - 1))
+        if i > 2
+          c[i, q] = muladd(-dt / (t[1] - t[i]), c[i - 1, q + 1], c[i - 1, q])
+        elseif i == 1
+          c[i, q] = inv(q)
+        elseif i == 2
+          c[i, q] = inv(q * (q + 1))
+        end
+      end
+      g[i] = c[i, 1] * dt
+    end
+  end
+end
+
+function ϕ_np1!(cache, du_np1, k)
+  (; ϕ_np1, ϕstar_n) = cache
+  @inbounds begin
+    for i in 1:k
+      if i != 1
+        @. ϕ_np1[i] = ϕ_np1[i - 1] - ϕstar_n[i - 1]
+      else
+        @. ϕ_np1[i] = du_np1
+      end
+    end
+  end
+end
+
+const γstar = [1, -1 / 2, -1 / 12, -1 / 24, -19 / 720, -3 / 160, -863 / 60480, -275 / 24192, -33953 / 3628800, -0.00789255, -0.00678585, -0.00592406, -0.00523669, -0.0046775, -0.00421495, -0.0038269]

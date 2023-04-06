@@ -1,5 +1,5 @@
 """
-    kbsolve!(fv!, fd!, u0, (t0, tmax); ...)
+    kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFunction}, (t0, tmax)::Tuple{Union{Real, Vector{<:Real}}, Real})
 
 Solves the 2-time Voltera integro-differential equation
 
@@ -27,7 +27,7 @@ for 2-point functions `u0` from `t0` to `tmax`.
   - `f1!(out, ts, w1, t1)`: The right-hand-side of ``dv(t_1)/dt_1``. The weight `w1`
     can be used to integrate the Volterra kernel and the output is saved in-place in `out`, 
     which has the same shape as `v0`
-  - `v0::Vector`: List of 1-point functions to be integrated
+  - `v0::Vector{<:GreenFunction}`: List of 1-point functions to be integrated
   - `callback(ts, w1, w2, t1, t2)`: A function that gets called everytime the 
     2-point function at *indices* (`t1`, `t2`) is updated. Can be used to update
     functions which are not being integrated, such as self-energies
@@ -69,24 +69,24 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
   @assert last(t0) <= tmax "Only t0 <= tmax supported"
 
   # Holds the information about the integration
-  state = (u=u0, v=v0, t=t0, w=VolterraWeights(t0, atol, rtol), start=[true])
+  state = (u=u0, v=v0, t=t0, w=initialize_weights(t0), start=[true])
 
   # Holds the information necessary to integrate
   cache = let
     t1 = length(state.t)
-    VCABMCache{eltype(state.t)}(kmax, OrdinaryDiffEq.VectorOfArray([[u[t1, t2] for t2 in 1:t1] for u in state.u]))
+    VCABMCache{eltype(state.t)}(kmax, VectorOfArray([[u[t1, t2] for t2 in 1:t1] for u in state.u]))
   end
 
   cache_v = isempty(state.v) ? nothing : let
     t1 = length(state.t)
-    cache_v = VCABMCache{eltype(state.t)}(kmax, OrdinaryDiffEq.VectorOfArray([[v[t1],] for v in state.v]))
+    cache_v = VCABMCache{eltype(state.t)}(kmax, VectorOfArray([[v[t1],] for v in state.v]))
     cache_v.dts = cache.dts
     cache_v
   end
 
   # The rhs is reshaped into a univariate problem
-  f2v!(t1, t2) = fv!(view(cache.f_next, t2, :), state.t, state.w.ws[t1], state.w.ws[t2], t1, t2)
-  f2d!(t1, t2) = fd!(view(cache.f_next, t2, :), state.t, state.w.ws[t1], state.w.ws[t2], t1, t2)
+  f2v!(t1, t2) = fv!(view(cache.f_next, t2, :), state.t, state.w[t1], state.w[t2], t1, t2)
+  f2d!(t1, t2) = fd!(view(cache.f_next, t2, :), state.t, state.w[t1], state.w[t2], t1, t2)
 
   function f2t!()
     t1 = length(state.t)
@@ -99,7 +99,7 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
 
   function f1t!()
     t1 = length(state.t)
-    f1!(view(cache_v.f_next, :), state.t, state.w.ws[t1], t1)
+    f1!(view(cache_v.f_next, :), state.t, state.w[t1], t1)
     return cache_v.f_next
   end
 
@@ -112,16 +112,16 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
     t1 = length(state.t)
 
     # Extend the caches to accomodate the new time column
-    extend!(cache, state, f2v!)
+    extend!(cache, state.t, f2v!)
 
     # Predictor
     u_next = predict!(cache, state.t)
     foreach((u, u′) -> foreach(t2 -> u[t1, t2] = u′[t2], 1:t1), state.u, u_next.u)
     if !isempty(state.v)
-      u_next = predict!(cache_v, state.t; update_dt = false)
+      u_next = predict!(cache_v, state.t)
       foreach((v, v′) -> v[t1] = v′[1], state.v, u_next.u)
     end
-    foreach(t2 -> callback(state.t, state.w.ws[t1], state.w.ws[t2], t1, t2), 1:t1)
+    foreach(t2 -> callback(state.t, state.w[t1], state.w[t2], t1, t2), 1:t1)
 
     # Corrector
     u_next = correct!(cache, f2t!)
@@ -130,7 +130,7 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
       u_next = correct!(cache_v, f1t!)
       foreach((v, v′) -> v[t1] = v′[1], state.v, u_next.u)
     end
-    foreach(t2 -> callback(state.t, state.w.ws[t1], state.w.ws[t2], t1, t2), 1:t1)
+    foreach(t2 -> callback(state.t, state.w[t1], state.w[t2], t1, t2), 1:t1)
 
     # Calculate error and adjust order
     adjust!(cache, cache_v, state.t, f2t!, f1t!, kmax, atol, rtol)
@@ -158,8 +158,7 @@ function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ,
   # Remove the last element of the time-grid / weights if last step failed
   if cache.error_k > one(cache.error_k)
     pop!(state.t)
-    pop!(state.w.ks)
-    pop!(state.w.ws)    
+    pop!(state.w)    
   end
 
   # Reached the end of the integration
@@ -176,8 +175,7 @@ function timeloop!(state, cache, tmax, dtmax, dtini, atol, rtol, qmax, qmin, γ,
       foreach(v -> resize!(v, l), state.v)
     end
     push!(state.t, last(state.t) + dt)
-    push!(state.w.ks, min(cache.k, kmax_vie))
-    push!(state.w.ws, calculate_weights(state.t, state.w.ks, atol, rtol))
+    push!(state.w, update_weights(last(state.w), state.t, min(cache.k, kmax_vie)))
     return true
   end
 end
