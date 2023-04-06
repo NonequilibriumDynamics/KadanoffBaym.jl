@@ -26,7 +26,7 @@ struct TimeOrderedConvolution{TA<:AbstractTimeOrderedGreenFunction, TB<:Abstract
 end
 
 """
-    conv(L::AbstractTimeOrderedGreenFunction, R::AbstractTimeOrderedGreenFunction, ws::UpperTriangular)
+    conv(L::TimeOrderedGreenFunction, R::TimeOrderedGreenFunction, ws::UpperTriangular)
 
 Calculates a time-convolution between time-ordered Green functions through the Langreth rules.
 
@@ -35,7 +35,7 @@ Calculates a time-convolution between time-ordered Green functions through the L
   - `R::AbstractTimeOrderedGreenFunction`: The right time-ordered Green function
   - `ws::UpperTriangular`: An upper-triangular weight matrix containing the integration weights
 """
-function conv(L::AbstractTimeOrderedGreenFunction, R::AbstractTimeOrderedGreenFunction, ws::UpperTriangular)
+function conv(L::TimeOrderedGreenFunction, R::TimeOrderedGreenFunction, ws::UpperTriangular)
   c = TimeOrderedConvolution(L, R, ws)
   return TimeOrderedGreenFunction(lesser(c), greater(c))
 end

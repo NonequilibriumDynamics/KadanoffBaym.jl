@@ -1,5 +1,5 @@
 """
-    kbsolve!(fv!, fd!, u0, (t0, tmax); ...)
+    kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFunction}, (t0, tmax)::Tuple{Union{Real, Vector{<:Real}}, Real})
 
 Solves the 2-time Voltera integro-differential equation
 

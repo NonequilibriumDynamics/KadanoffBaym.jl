@@ -1,6 +1,6 @@
 # Welcome!
 
-`KadanoffBaym.jl` is the first fully *adaptive* solver for Kadanoff-Baym equations written in Julia. 
+`KadanoffBaym.jl` is the first fully *adaptive* solver for Kadanoff-Baym equations written in Julia.
 
 !!! tip
 	To learn more about the solver and Kadanoff-Baym equations, have a look into our [accompanying paper](https://doi.org/10.21468/SciPostPhysCore.5.2.030).
@@ -16,6 +16,7 @@ julia> ] add KadanoffBaym
 ## Scalability
 
 For now, `KadanoffBaym.jl` is restricted to run on a single machine, for which the maximum number of threads available will be used. You can set this number by running Julia with the `thread` [flag](https://docs.julialang.org/en/v1/manual/multi-threading/#man-multithreading)
+
 ```
 julia -t auto
 ```
@@ -29,7 +30,7 @@ To learn how to work with `KadanoffBaym.jl`, there are two options:
 - The examples section of this documentation. If you are interested in _quantum_ dynamics, we recommend you start with the [tight-binding model](@ref TightBinding). More advanced users can jump directly to [Fermi-Hubbard model part I](@ref FHM_I) about the _second Born approximation_. [Part II](@ref FHM_II) shows how to solve the more involved ``T``-matrix approximation. 
 
 !!! note
-	`KadanoffBaym.jl` can also be used to simulate _stochastic processes_. An introduction to this topic is given [here](StochasticProcesses).
+	`KadanoffBaym.jl` can also be used to simulate _stochastic processes_. An introduction to this topic is given [here](@ref StochasticProcesses).
 
 ## Library
 
@@ -47,28 +48,29 @@ To learn how to work with `KadanoffBaym.jl`, there are two options:
 ### Solver
 
 ```@docs
-kbsolve!(fv!, fd!, u0, (t0, tmax))
+kbsolve!
 ```
 
 ### Green Functions
 
 ```@docs
-GreenFunction{T,N,A,U<:AbstractSymmetry}
+GreenFunction
 ```
 
 ### Wigner Transformation
 
 ```@docs
-wigner_transform(x::AbstractMatrix)
+wigner_transform
 ```
 
 ### Langreth's rules
+
 ```@docs
 TimeOrderedGreenFunction
 ```
 
 ```@docs
-conv(L, R, ws)
+conv
 ```
 
 ## Citation
