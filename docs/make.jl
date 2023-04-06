@@ -8,6 +8,7 @@ makedocs(
                                "examples/FermiHubbard2B.md",
                                "examples/FermiHubbardTM.md",
                                "examples/OpenBoseDimer.md",
+                               "examples/BoseEinsteinCondensate.md",
                                "examples/StochasticProcesses.md"]
             ]
     )
