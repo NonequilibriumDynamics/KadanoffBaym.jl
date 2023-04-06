@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Bose-Einstein Condensate · KadanoffBaym.jl</title><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img class="docs-light-only" src="../../assets/logo.png" alt="KadanoffBaym.jl logo"/><img class="docs-dark-only" src="../../assets/logo-dark.png" alt="KadanoffBaym.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">KadanoffBaym.jl</a></span></div><form class="docs-search" action="../../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../../">Overview</a></li><li><span class="tocitem">Examples</span><ul><li><a class="tocitem" href="../TightBindingModel/">Tight-Binding Model</a></li><li><a class="tocitem" href="../FermiHubbard2B/">Fermi-Hubbard Model I</a></li><li><a class="tocitem" href="../FermiHubbardTM/">Fermi-Hubbard Model II</a></li><li><a class="tocitem" href="../OpenBoseDimer/">Open Bose Dimer</a></li><li class="is-active"><a class="tocitem" href>Bose-Einstein Condensate</a></li><li><a class="tocitem" href="../StochasticProcesses/">Stochastic Processes</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href>Bose-Einstein Condensate</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Bose-Einstein Condensate</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/blob/master/docs/src/examples/BoseEinsteinCondensate.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="BEC"><a class="docs-heading-anchor" href="#BEC">Bose-Einstein Condensate</a><a id="BEC-1"></a><a class="docs-heading-anchor-permalink" href="#BEC" title="Permalink"></a></h1><p>In this example we will use <code>KadanoffBaym.jl</code> to study <em>dephasing</em> in Bose-Einstein condensates (see Chp. 3 <a href="https://bonndoc.ulb.uni-bonn.de/xmlui/handle/20.500.11811/8961">here</a>). To do this, we will need to solve <em>one-time</em> differential equations for the condensate amplitude <span>$\varphi(t)$</span> and the so-called equal-time <em>Keldysh Green</em> function <span>$G^K(t, t)$</span>.</p><div class="admonition is-category-hint"><header class="admonition-header">Hint</header><div class="admonition-body"><p>A <a href="https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/blob/master/examples/bose-einstein-condensate.ipynb">Jupyter notebook</a> for this example is available in our <a href="https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/tree/master/examples">examples folder</a>.</p></div></div><p>The Lindblad master equation describing this systems reads</p><p class="math-container">\[\begin{align}
+    \begin{split}
+    	\dot{\hat{\rho}} &amp;= -i\omega_0[a^\dagger a, \hat{\rho}] +\frac{\lambda}{2}\left\{ 2a\hat{\rho} a^{\dagger} - \left( a^{\dagger}a\hat{\rho} + \hat{\rho} a^{\dagger}a \right)\right\} + \frac{\gamma}{2}\left\{ 2a^{\dagger}\hat{\rho} a - \left( aa^{\dagger}\hat{\rho} + \hat{\rho} aa^{\dagger} \right)\right\} \\
+        &amp;+ D\left\{ 2a^{\dagger}a\hat{\rho} a^{\dagger}a - \left( a^{\dagger}aa^{\dagger}a\hat{\rho} + \hat{\rho} a^{\dagger}aa^{\dagger}a \right)\right\},    
+    \end{split}
+\end{align}\]</p><p>where <span>$\lambda &gt; 0$</span> is the loss parameter, <span>$\gamma &gt; 0$</span> represents the corresponding gain, and <span>$D &gt; 0$</span> is the constant that introduces dephasing. The derivation for the equations of motion for <span>$\varphi(t)$</span> and <span>$G^K(t, t)$</span> is again given <a href="https://bonndoc.ulb.uni-bonn.de/xmlui/handle/20.500.11811/8961">here</a> and leads to</p><p class="math-container">\[\begin{align}
+    \begin{split}
+    \dot{\varphi}(t) &amp;=  -i\omega_0\varphi(t) -\frac{1}{2}{(\lambda - \gamma + {2} D)}\varphi(t), \\
+    \dot{G}^K(t, t) &amp;= -{(\lambda - \gamma)}G^K(t, t) - i{\left(\lambda + \gamma + {2} D |\varphi(t)|^2\right)}.
+    \end{split}
+\end{align}\]</p><p>To make these expressions more transparent, we set <span>$\varphi(t) = \sqrt{2N(t)}\mathrm{e}^{i \theta(t)}$</span> and <span>$G^K(t, t) = -i{(2\delta N(t) + 1)}$</span>, where <span>$N$</span> and <span>$\delta N$</span> are the condensate and non-condensate occupation, respectively. For these quantities, we obtain</p><p class="math-container">\[\begin{align}
+    \begin{split}
+    \dot{N} &amp;=  {(\gamma - \lambda -{2} D)}N, \\
+    \delta \dot{N} &amp;=  \gamma{(\delta N + 1)} - \lambda\delta N + {2}DN.
+    \end{split}
+\end{align}\]</p><p>Translating all of this into code is now straightforward! We start by defining the condensate and the <em>Keldysh</em> Green function along with their initial conditions:</p><pre><code class="language-julia hljs">using KadanoffBaym, LinearAlgebra
+
+# parameters
+ω₀ = 1.0
+λ = 0.0
+γ = 0.0
+D = 1.0 
+
+# initial occupations
+N = 1.0
+δN = 0.0
+
+# One-time function for the condensate
+φ = GreenFunction(zeros(ComplexF64, 1, 1), OnePoint)
+
+# Allocate the initial Green functions (time arguments at the end)
+GK = GreenFunction(zeros(ComplexF64, 1, 1, 1, 1), SkewHermitian)
+
+# Initial conditions
+GK[1, 1, 1, 1] = -im * (2δN + 1)
+φ[1, 1] = sqrt(2N)</code></pre><p>In the next step, we write down the equations of motion:</p><pre><code class="language-julia hljs"># we leave the vertical equation empty since we can solve for GK in equal-time only
+function fv!(out, ts, h1, h2, t, t′)
+    out[1] = zero(out[1])
+end
+
+# diagonal equation for GK
+function fd!(out, ts, h1, h2, t, _)
+    # cast condensate to the right type
+    φ_mat = reduce(hcat, abs.(φ[t]).^2)
+    out[1] = -(λ - γ) * GK[t, t] .- im * (λ + γ + 2D .* φ_mat)
+end
+
+# one-time equation for condensate amplitude
+function f1!(out, ts, h1, t)
+    out[1] = -im * ω₀ * φ[t] - (1/2) * (λ - γ + 2D) * φ[t]
+end</code></pre><p>Calling the solver is again a one-liner:</p><pre><code class="language-julia hljs">sol = kbsolve!(fv!, fd!, [GK,], (0.0, 1.0); atol=1e-6, rtol=1e-4, v0 = [φ,], f1! =f1!)</code></pre><p>If you want a plot of the results, you can find it in our corresponding <a href="https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/blob/master/examples/bose-einstein-condensate.ipynb">Jupyter notebook</a>.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../OpenBoseDimer/">« Open Bose Dimer</a><a class="docs-footer-nextpage" href="../StochasticProcesses/">Stochastic Processes »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.24 on <span class="colophon-date" title="Thursday 6 April 2023 13:18">Thursday 6 April 2023</span>. Using Julia version 1.7.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
