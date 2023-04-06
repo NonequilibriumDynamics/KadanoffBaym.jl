@@ -39,12 +39,13 @@ Translating all of this into code is now straightforward! We start by defining t
 ```julia
 using KadanoffBaym, LinearAlgebra
 
+# parameters
 ω₀ = 1.0
 λ = 0.0
 γ = 0.0
-
-# dephasing
 D = 1.0 
+
+# initial occupations
 N = 1.0
 δN = 0.0
 
