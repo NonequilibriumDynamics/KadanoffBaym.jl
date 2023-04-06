@@ -27,7 +27,7 @@ for 2-point functions `u0` from `t0` to `tmax`.
   - `f1!(out, ts, w1, t1)`: The right-hand-side of ``dv(t_1)/dt_1``. The weight `w1`
     can be used to integrate the Volterra kernel and the output is saved in-place in `out`, 
     which has the same shape as `v0`
-  - `v0::Vector`: List of 1-point functions to be integrated
+  - `v0::Vector{<:GreenFunction}`: List of 1-point functions to be integrated
   - `callback(ts, w1, w2, t1, t2)`: A function that gets called everytime the 
     2-point function at *indices* (`t1`, `t2`) is updated. Can be used to update
     functions which are not being integrated, such as self-energies

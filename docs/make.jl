@@ -1,4 +1,4 @@
-using Documenter, KadanoffBaym, LinearAlgebra
+using Documenter, KadanoffBaym
 
 makedocs(
     sitename="KadanoffBaym.jl",
