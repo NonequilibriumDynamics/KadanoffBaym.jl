@@ -27,26 +27,24 @@ N = 1.0
 δN = 0.0
 
 # One-time function for the condensate
-φ = GreenFunction(zeros(ComplexF64, 1, 1), OnePoint)
+φ = GreenFunction(zeros(ComplexF64, 1), OnePoint)
 
 # Allocate the initial Green functions (time arguments at the end)
-GK = GreenFunction(zeros(ComplexF64, 1, 1, 1, 1), SkewHermitian)
+GK = GreenFunction(zeros(ComplexF64, 1, 1), SkewHermitian)
 
 # Initial conditions
-GK[1, 1, 1, 1] = -im * (2δN + 1)
-φ[1, 1] = sqrt(2N)</code></pre><p>In the next step, we write down the equations of motion:</p><pre><code class="language-julia hljs"># we leave the vertical equation empty since we can solve for GK in equal-time only
+GK[1, 1] = -im * (2δN + 1)
+φ[1] = sqrt(2N)</code></pre><p>In the next step, we write down the equations of motion:</p><pre><code class="language-julia hljs"># we leave the vertical equation empty since we can solve for GK in equal-time only
 function fv!(out, ts, h1, h2, t, t′)
     out[1] = zero(out[1])
 end
 
 # diagonal equation for GK
 function fd!(out, ts, h1, h2, t, _)
-    # cast condensate to the right type
-    φ_mat = reduce(hcat, abs.(φ[t]).^2)
-    out[1] = -(λ - γ) * GK[t, t] .- im * (λ + γ + 2D .* φ_mat)
+    out[1] = -(λ - γ) * GK[t, t] - im * (λ + γ + 2D * abs2(φ[t]))
 end
 
 # one-time equation for condensate amplitude
 function f1!(out, ts, h1, t)
     out[1] = -im * ω₀ * φ[t] - (1/2) * (λ - γ + 2D) * φ[t]
-end</code></pre><p>Calling the solver is again a one-liner:</p><pre><code class="language-julia hljs">sol = kbsolve!(fv!, fd!, [GK,], (0.0, 1.0); atol=1e-6, rtol=1e-4, v0 = [φ,], f1! =f1!)</code></pre><p>If you want a plot of the results, you can find it in our corresponding <a href="https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/blob/master/examples/bose-einstein-condensate.ipynb">Jupyter notebook</a>.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../OpenBoseDimer/">« Open Bose Dimer</a><a class="docs-footer-nextpage" href="../StochasticProcesses/">Stochastic Processes »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.24 on <span class="colophon-date" title="Thursday 6 April 2023 13:18">Thursday 6 April 2023</span>. Using Julia version 1.7.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+end</code></pre><p>Calling the solver is again a one-liner:</p><pre><code class="language-julia hljs">sol = kbsolve!(fv!, fd!, [GK,], (0.0, 1.0); atol=1e-6, rtol=1e-4, v0 = [φ,], f1! =f1!)</code></pre><p>If you want a plot of the results, you can find it in our corresponding <a href="https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/blob/master/examples/bose-einstein-condensate.ipynb">Jupyter notebook</a>.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../OpenBoseDimer/">« Open Bose Dimer</a><a class="docs-footer-nextpage" href="../StochasticProcesses/">Stochastic Processes »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.24 on <span class="colophon-date" title="Thursday 6 April 2023 13:54">Thursday 6 April 2023</span>. Using Julia version 1.7.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
