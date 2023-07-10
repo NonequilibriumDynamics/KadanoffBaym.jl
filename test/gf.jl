@@ -48,21 +48,6 @@ end
 end
 
 @testset "setindex!" begin
-  function setindexA(A::AbstractArray)
-    for i in 1:N, j in 1:i
-      A[:, :, i, j] = b
-      if j != i
-        A[:, :, j, i] = -adjoint(b)
-      end
-    end
-  end
-
-  function setindexG(G)
-    for i in 1:N, j in 1:i
-      G[i, j] = b
-    end
-  end
-
   data = zeros(ComplexF64, N, N, N, N)
   gf = GreenFunction(copy(data), SkewHermitian)
 
@@ -73,11 +58,21 @@ end
   data[:, :, 2, 1] = -adjoint(b)
   @test gf.data == data
 
-  setindexA(data)
-  setindexG(gf)
-  @test gf.data == data
+  # # this used to fail
+  # gf[:, :, 2, 1] = b
+  # data[:, :, 2, 1] = b
+  # data[:, :, 1, 2] = -adjoint(b)
 
-  # using BenchmarkTools
-  # @show @btime $setindexA($data)
-  # @show @btime $setindexG($gf)
+  for i in 1:N, j in 1:i
+    data[:, :, i, j] = b
+    if j != i
+      data[:, :, j, i] = -adjoint(b)
+    end
+  end
+  
+  for i in 1:N, j in 1:i
+    gf[i, j] = b
+  end
+
+  @test gf.data == data
 end
