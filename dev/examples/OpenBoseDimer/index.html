@@ -37,22 +37,22 @@ GG[1, 1] = -im * I(2) + GL[1,1]</code></pre><p>Then we assign all of the paramet
 ω₂ = 0.0
 J = pi / 4
 
-γ = 1
+λ = 1
 
 N₁ = 1.
 N₂ = 0.1
 
-H = [ω₁ - 0.5im * ((N₁ + 1) + N₁ * γ) J; J ω₂ - 0.5im * ((N₂ + 1) + N₂ * γ)]</code></pre><p>As the last step, we write down the equations of motion:</p><pre><code class="language-julia hljs"># Right-hand side for the &quot;vertical&quot; evolution
+H = [ω₁ - 0.5im * λ * ((N₁ + 1) + N₁) J; J ω₂ - 0.5im * λ * ((N₂ + 1) + N₂)]</code></pre><p>As the last step, we write down the equations of motion:</p><pre><code class="language-julia hljs"># Right-hand side for the &quot;vertical&quot; evolution
 function fv!(out, _, _, _, t, t′)
-    out[1] = -1.0im * (H * GL[t, t′] + [[1.0im * N₁ * γ, 0] [0, 1.0im * N₂ * γ]] * GL[t, t′])
-    out[2] = -1.0im * (adjoint(H) * GG[t, t′] - 1.0im * [[(N₁ + 1), 0] [0, (N₂ + 1)]] * GG[t, t′])
+    out[1] = -1.0im * (H * GL[t, t′] + λ * [[1.0im * N₁, 0] [0, 1.0im * N₂]] * GL[t, t′])
+    out[2] = -1.0im * (adjoint(H) * GG[t, t′] - 1.0im * λ * [[(N₁ + 1), 0] [0, (N₂ + 1)]] * GG[t, t′])
 end</code></pre><p>Observe how we have converted the (anti-) time-ordered Green functions <span>$G^{T}, G^{\tilde{T}}$</span> into lesser and greater functions by explicitly using the fact that we are operating on the <span>$t&gt;t&#39;$</span> triangle of the two-time grid <span>$(t, t&#39;)$</span>. By combining <code>fv!</code> with its adjoint <a href="../TightBindingModel/#TightBinding">as before</a>, we also obtain the &quot;diagonal&quot; equations as</p><pre><code class="language-julia hljs"># Right-hand side for the &quot;diagonal&quot; evolution
 function fd!(out, _, _, _, t, t′)
     out[1] = (-1.0im * (H * GL[t, t] - GL[t, t] * adjoint(H)
-             + 1.0im * γ * [[N₁ * (GL[1, 1, t, t] + GG[1, 1, t, t]), (N₁ + N₂) * (GL[2, 1, t, t] + GG[2, 1, t, t]) / 2] [(N₁ + N₂) * (GL[1, 2, t, t] + GG[1, 2, t, t]) / 2, N₂ * (GL[2, 2, t, t] + GG[2, 2, t, t])]])
+             + 1.0im * λ * [[N₁ * (GL[1, 1, t, t] + GG[1, 1, t, t]), (N₁ + N₂) * (GL[2, 1, t, t] + GG[2, 1, t, t]) / 2] [(N₁ + N₂) * (GL[1, 2, t, t] + GG[1, 2, t, t]) / 2, N₂ * (GL[2, 2, t, t] + GG[2, 2, t, t])]])
              )
     out[2] = (-1.0im * (adjoint(H) * GG[t, t] - GG[t, t] * H
-             - 1.0im * [[(N₁ + 1) * (GL[1, 1, t, t] + GG[1, 1, t, t]), (N₁ + N₂ + 2) * (GG[2, 1, t, t] + GL[2, 1, t, t]) / 2] [(N₁ + N₂ + 2) * (GG[1, 2, t, t] + GL[1, 2, t, t]) / 2, (N₂ + 1) * (GL[2, 2, t, t] + GG[2, 2, t, t])]])
+             - 1.0im * λ * [[(N₁ + 1) * (GL[1, 1, t, t] + GG[1, 1, t, t]), (N₁ + N₂ + 2) * (GG[2, 1, t, t] + GL[2, 1, t, t]) / 2] [(N₁ + N₂ + 2) * (GG[1, 2, t, t] + GL[1, 2, t, t]) / 2, (N₂ + 1) * (GL[2, 2, t, t] + GG[2, 2, t, t])]])
              )
 end</code></pre><p>Calling the solver is again a one-liner:</p><pre><code class="language-julia hljs">sol = kbsolve!(fv!, fd!, [GL, GG], (0.0, 32.0); atol=1e-6, rtol=1e-4)</code></pre><div class="admonition is-success"><header class="admonition-header">Tip</header><div class="admonition-body"><p>By importing Julia&#39;s <code>FFTW</code> and <code>Interpolations</code> packages, we can also obtain the Wigner-transformed Green functions.</p></div></div><pre><code class="language-julia hljs">using FFTW, Interpolations
 function wigner_transform_itp(x::AbstractMatrix, ts::Vector; fourier = true, ts_lin = range(first(ts), last(ts); length = length(ts)))
@@ -61,4 +61,4 @@ function wigner_transform_itp(x::AbstractMatrix, ts::Vector; fourier = true, ts_
 end
 
 ρ_11_wigner, (taus, ts) = wigner_transform_itp((GG.data - GL.data)[1, 1, :, :], sol.t; fourier=false)
-ρ_11_FFT, (ωs, ts) = wigner_transform_itp((GG.data - GL.data)[1, 1, :, :], sol.t; fourier=true)</code></pre><p>If you want to see plots of all the results, you can find those in our corresponding <a href="https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/blob/master/examples/bosonic-dimer.ipynb">Jupyter notebook</a>.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../FermiHubbardTM/">« Fermi-Hubbard Model II</a><a class="docs-footer-nextpage" href="../BoseEinsteinCondensate/">Bose-Einstein Condensate »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.25 on <span class="colophon-date" title="Sunday 17 March 2024 16:40">Sunday 17 March 2024</span>. Using Julia version 1.7.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ρ_11_FFT, (ωs, ts) = wigner_transform_itp((GG.data - GL.data)[1, 1, :, :], sol.t; fourier=true)</code></pre><p>If you want to see plots of all the results, you can find those in our corresponding <a href="https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/blob/master/examples/bosonic-dimer.ipynb">Jupyter notebook</a>.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../FermiHubbardTM/">« Fermi-Hubbard Model II</a><a class="docs-footer-nextpage" href="../BoseEinsteinCondensate/">Bose-Einstein Condensate »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.25 on <span class="colophon-date" title="Sunday 17 March 2024 17:32">Sunday 17 March 2024</span>. Using Julia version 1.7.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
