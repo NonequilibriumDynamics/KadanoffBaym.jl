@@ -57,6 +57,12 @@ julia> gf[i,j] == gf[:,:,...,:,i,j]
 julia> gf[i,j,k] == gf[:,:,...,:,i,j,k]
 ```
 
+In order to ensure a correct behaviour of the symmetries, `setindex!` is only
+defined at the level of time coordinates
+```julia-repl
+julia> gf[i, j] = a # is equivalent to gf[..., i, j] = a[...]
+```
+
 Custom symmetries can be implemented via multiple dispatch
 ```julia-repl
 julia> struct MySymmetry <: KadanoffBaym.AbstractSymmetry end
@@ -97,16 +103,11 @@ Base.eltype(::GreenFunction{T}) where {T} = T
 @inline Base.getindex(::GreenFunction{T,N,A,U}, I) where {T,N,A,U} = error("Single indexing not allowed")
 Base.@propagate_inbounds Base.getindex(G::GreenFunction{T,N,A,U}, I::Vararg{T1,N1}) where {T,N,A,U,T1,N1} = G.data[ntuple(i -> Colon(), N-N1)..., I...]
 
-@inline Base.setindex!(::GreenFunction{T,N,A,U}, v, I) where {T,N,A,U} = error("Single indexing not allowed")
-Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,U}, v, I::Vararg{T1,N1}) where {T,N,A,U,T1,N1}
-  ts = last2(I...)
-  jj = front2(I...)
+Base.@propagate_inbounds function Base.setindex!(G::GreenFunction{T,N,A,U}, v, i1::Int, i2::Int) where {T,N,A,U}
+  G.data[ntuple(i -> Colon(), Val(N - 2))..., i1, i2] = v
 
-  if ==(ts...)
-    G.data[ntuple(i -> Colon(), N-N1)..., jj..., ts...] = v
-  else
-    G.data[ntuple(i -> Colon(), N-N1)..., jj..., ts...] = v
-    G.data[ntuple(i -> Colon(), N-N1)..., jj..., reverse(ts)...] = symmetry(U)(v)
+  if i1 != i2
+    G.data[ntuple(i -> Colon(), Val(N - 2))..., i2, i1] = symmetry(U)(v)
   end
 end
 
