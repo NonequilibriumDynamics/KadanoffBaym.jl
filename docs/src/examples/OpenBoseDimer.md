@@ -77,19 +77,19 @@ Then we assign all of the parameters we need:
 ω₂ = 0.0
 J = pi / 4
 
-γ = 1
+λ = 1
 
 N₁ = 1.
 N₂ = 0.1
 
-H = [ω₁ - 0.5im * ((N₁ + 1) + N₁ * γ) J; J ω₂ - 0.5im * ((N₂ + 1) + N₂ * γ)]
+H = [ω₁ - 0.5im * λ * ((N₁ + 1) + N₁) J; J ω₂ - 0.5im * λ * ((N₂ + 1) + N₂)]
 ```
 As the last step, we write down the equations of motion:
 ```julia
 # Right-hand side for the "vertical" evolution
 function fv!(out, _, _, _, t, t′)
-    out[1] = -1.0im * (H * GL[t, t′] + [[1.0im * N₁ * γ, 0] [0, 1.0im * N₂ * γ]] * GL[t, t′])
-    out[2] = -1.0im * (adjoint(H) * GG[t, t′] - 1.0im * [[(N₁ + 1), 0] [0, (N₂ + 1)]] * GG[t, t′])
+    out[1] = -1.0im * (H * GL[t, t′] + λ * [[1.0im * N₁, 0] [0, 1.0im * N₂]] * GL[t, t′])
+    out[2] = -1.0im * (adjoint(H) * GG[t, t′] - 1.0im * λ * [[(N₁ + 1), 0] [0, (N₂ + 1)]] * GG[t, t′])
 end
 ```
 Observe how we have converted the (anti-) time-ordered Green functions ``G^{T}, G^{\tilde{T}}`` into lesser and greater functions by explicitly using the fact that we are operating on the ``t>t'`` triangle of the two-time grid ``(t, t')``. By combining `fv!` with its adjoint [as before](@ref TightBinding), we also obtain the "diagonal" equations as
@@ -97,10 +97,10 @@ Observe how we have converted the (anti-) time-ordered Green functions ``G^{T}, 
 # Right-hand side for the "diagonal" evolution
 function fd!(out, _, _, _, t, t′)
     out[1] = (-1.0im * (H * GL[t, t] - GL[t, t] * adjoint(H)
-             + 1.0im * γ * [[N₁ * (GL[1, 1, t, t] + GG[1, 1, t, t]), (N₁ + N₂) * (GL[2, 1, t, t] + GG[2, 1, t, t]) / 2] [(N₁ + N₂) * (GL[1, 2, t, t] + GG[1, 2, t, t]) / 2, N₂ * (GL[2, 2, t, t] + GG[2, 2, t, t])]])
+             + 1.0im * λ * [[N₁ * (GL[1, 1, t, t] + GG[1, 1, t, t]), (N₁ + N₂) * (GL[2, 1, t, t] + GG[2, 1, t, t]) / 2] [(N₁ + N₂) * (GL[1, 2, t, t] + GG[1, 2, t, t]) / 2, N₂ * (GL[2, 2, t, t] + GG[2, 2, t, t])]])
              )
     out[2] = (-1.0im * (adjoint(H) * GG[t, t] - GG[t, t] * H
-             - 1.0im * [[(N₁ + 1) * (GL[1, 1, t, t] + GG[1, 1, t, t]), (N₁ + N₂ + 2) * (GG[2, 1, t, t] + GL[2, 1, t, t]) / 2] [(N₁ + N₂ + 2) * (GG[1, 2, t, t] + GL[1, 2, t, t]) / 2, (N₂ + 1) * (GL[2, 2, t, t] + GG[2, 2, t, t])]])
+             - 1.0im * λ * [[(N₁ + 1) * (GL[1, 1, t, t] + GG[1, 1, t, t]), (N₁ + N₂ + 2) * (GG[2, 1, t, t] + GL[2, 1, t, t]) / 2] [(N₁ + N₂ + 2) * (GG[1, 2, t, t] + GL[1, 2, t, t]) / 2, (N₂ + 1) * (GL[2, 2, t, t] + GG[2, 2, t, t])]])
              )
 end
 ```
