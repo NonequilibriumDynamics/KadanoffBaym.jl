@@ -116,10 +116,11 @@ function extend!(cache::VCABMCache, times, fv!)
       return
     end
 
-    _ϕ_n = [zero.(f_next[t, :]) for _ in eachindex(ϕ_n)]
-    _ϕ_np1 = [zero.(f_next[t, :]) for _ in eachindex(ϕ_np1)]
-    _ϕstar_n = [zero.(f_next[t, :]) for _ in eachindex(ϕstar_n)]
-    _ϕstar_nm1 = [zero.(f_next[t, :]) for _ in eachindex(ϕstar_nm1)]
+    _row = [zero(f_next.u[j][t]) for j in eachindex(f_next.u)]
+    _ϕ_n = [copy.(_row) for _ in eachindex(ϕ_n)]
+    _ϕ_np1 = [copy.(_row) for _ in eachindex(ϕ_np1)]
+    _ϕstar_n = [copy.(_row) for _ in eachindex(ϕstar_n)]
+    _ϕstar_nm1 = [copy.(_row) for _ in eachindex(ϕstar_nm1)]
 
     # When extending, i.e., adding a new time column, an interpolant for the rhs in this column
     # has to be built. Since sometimes fv! is discontinuous at the diagonal it is assumed that 
@@ -127,7 +128,7 @@ function extend!(cache::VCABMCache, times, fv!)
     # is smooth and the solver does not stall.
     for k′ in 1:k
       fv!(max(1, t - 1 - k + k′), t) # result is stored in f_next
-      ϕ_and_ϕstar!((f_prev=f_next[t, :], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
+      ϕ_and_ϕstar!((f_prev=[f_next.u[j][t] for j in eachindex(f_next.u)], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
       _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
     end
 

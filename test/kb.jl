@@ -113,6 +113,39 @@ end
   @test G.data ≈ sol_ atol = atol rtol = 2e1rtol
 end
 
+@testset "Fermionic dimer" begin
+  atol = 1e-8
+  rtol = 1e-6
+
+  dim = 2
+  GL = GreenFunction(zeros(ComplexF64, dim, dim, 1, 1), SkewHermitian)
+  GG = GreenFunction(zeros(ComplexF64, dim, dim, 1, 1), SkewHermitian)
+
+  N_0 = 1.0
+  GL[1, 1] = +im * diagm([N_0, 0.0])
+  GG[1, 1] = -im * I(2) + GL[1, 1]
+
+  H = ComplexF64[1.0/20 1.0; 1.0 -1.0/20]
+
+  function fv!(out, _, _, _, t1, t2)
+    out[1] = -1.0im * H * GL[t1, t2]
+    out[2] = -1.0im * H * GG[t1, t2]
+  end
+
+  function fd!(out, _, _, _, t1, t2)
+    fv!(out, nothing, nothing, nothing, t1, t2)
+    out[1] .-= adjoint(out[1])
+    out[2] .-= adjoint(out[2])
+  end
+
+  ana(i1, i2, t1, t2) = (exp(-1.0im * H * t1) * GL[:, :, 1, 1] * exp(1.0im * H * t2))[i1, i2]
+
+  sol = kbsolve!(fv!, fd!, [GL, GG], (0.0, 5.0); atol=atol, rtol=rtol)
+
+  exact = [ana(i, j, t1, t2) for i in 1:2, j in 1:2, t1 in sol.t, t2 in sol.t]
+  @test GL.data ≈ exact atol=1e-3 rtol=1e-3
+end
+
 @testset "Brownian motion" begin
   atol = 1e-9
   rtol = 1e-7
