@@ -97,3 +97,5 @@ If you use `KadanoffBaym.jl` in your research, please cite our [paper](https://s
 	url={https://scipost.org/10.21468/SciPostPhysCore.5.2.030},
 }
 ```
+
+A list of papers citing this work can be found [here](@ref "Papers citing KadanoffBaym.jl").

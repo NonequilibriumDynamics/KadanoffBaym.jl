@@ -1,4 +1,4 @@
-# Papers using KadanoffBaym.jl
+# Papers citing KadanoffBaym.jl
 
 The following papers cite [our work](https://doi.org/10.21468/SciPostPhysCore.5.2.030). If your paper is missing, please [open an issue](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/issues) or a pull request.
 

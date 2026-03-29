@@ -40,7 +40,7 @@ If you use `KadanoffBaym.jl` in your research, please cite our work:
 }
 ```
 
-## Papers using KadanoffBaym.jl
+## Papers citing KadanoffBaym.jl
 
 1. Skachkov *et al.*, [Linear and nonlinear optical response based on many-body GW-Bethe-Salpeter and Kadanoff-Baym approaches for two-dimensional layered semiconductors](https://doi.org/10.1038/s41699-025-00627-4), npj 2D Mater. Appl. **10**, 15 (2026)
 2. Erpenbeck *et al.*, [Compact representation and long-time extrapolation of real-time data for quantum systems using the ESPRIT algorithm](https://doi.org/10.1103/8vzv-y74m), Phys. Rev. B **113**, 115129 (2026)

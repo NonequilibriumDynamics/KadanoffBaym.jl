@@ -14,7 +14,7 @@ makedocs(
                                "examples/OpenBoseDimer.md",
                                "examples/BoseEinsteinCondensate.md",
                                "examples/StochasticProcesses.md"],
-                "Papers using KadanoffBaym.jl" => "citing.md"
+                "Papers citing KadanoffBaym.jl" => "citing.md"
             ],
     warnonly = true,
     )
