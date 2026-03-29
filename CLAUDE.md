@@ -27,10 +27,11 @@ src/
 - `kbsolve!(fv!, fd!, u0, (t0, tmax); ...)` is the main entry point. It takes in-place RHS functions and mutates `u0`. Returns `(t=times, w=weights)`.
 - `VCABMCache` holds the predictor-corrector state (Adams coefficients, phi-star arrays, error estimates).
 - `VectorOfArray` from RecursiveArrayTools is used internally to reshape the 2-time problem into a univariate ODE (Section 3.1, Eq. 25-26 of the paper).
+- `TimeOrderedGreenFunction{T}` wraps lesser/greater components for Langreth rule convolutions via `conv`. Keldysh components extracted with `greater`, `lesser`, `retarded`, `advanced`.
 
 ## Dependencies
 
-- RecursiveArrayTools (VectorOfArray) — v2.38+ and v3+ supported as of v1.4.0
+- RecursiveArrayTools (VectorOfArray) — v2.38+ and v3+ supported
 - SpecialMatrices (Vandermonde) — for integration weight computation
 - AbstractFFTs — for Wigner transform (FFTW is a test-only dependency)
 
@@ -47,11 +48,17 @@ julia -e 'using Pkg; Pkg.activate("."); Pkg.test()'
 - GitHub Actions: Julia 1.10 (LTS) + latest, Ubuntu/macOS/Windows, x64/x86
 - Documentation: Documenter.jl 1.x, deployed to GitHub Pages
 - Weekly scheduled runs (Monday 2 AM UTC)
+- CI workflow was auto-disabled due to inactivity; re-enabled March 2026
 
-## Recent Changes (v1.4.0, March 2026)
+## RecursiveArrayTools v3 Compatibility Notes
 
-- Modernized CI (Actions v4, Julia 1.10+)
-- RecursiveArrayTools v3 compatibility (VectorOfArray no longer <: AbstractArray)
-- Upgraded Documenter.jl 0.27 → 1.x
-- Widened all dependency compat bounds
-- Code quality: exact rational gamma_star constants, type-generic skew_hermitify!, parametric TimeOrderedGreenFunction{T}
+RAT v3 introduced three breaking changes that required fixes:
+1. `VectorOfArray` is no longer `<: AbstractArray` — `calculate_residuals!` dispatch was widened from `AbstractArray` to untyped
+2. `view(va, :)` is broken for non-scalar element types — changed to `view(va, 1, :)` in `kb.jl`
+3. Broadcasting `@.` on `VectorOfArray` with scalar elements now broadcasts down to scalars — added `calculate_residuals!` method for `Number`
+
+Do not try to replace VectorOfArray with a custom type — the broadcast and iteration semantics are subtle and deeply coupled to the solver.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the full release history.
