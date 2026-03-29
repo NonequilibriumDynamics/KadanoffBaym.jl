@@ -112,3 +112,94 @@ end
 
   @test G.data ≈ sol_ atol = atol rtol = 2e1rtol
 end
+
+@testset "Brownian motion" begin
+  atol = 1e-9
+  rtol = 1e-7
+  theta = 1.0
+  D = 4.0
+  N₀ = 3.0
+  T = 4.0
+
+  F = GreenFunction(N₀ * ones(1, 1), Symmetrical)
+
+  function fv!(out, _, _, _, t1, t2)
+    out[1] = -theta * F[t1, t2]
+  end
+
+  function fd!(out, _, _, _, t1, t2)
+    out[1] = -theta * 2F[t1, t2] + D
+  end
+
+  sol = kbsolve!(fv!, fd!, [F], (0.0, T); atol=atol, rtol=rtol, dtini=1e-10)
+
+  F_ana(t1, t2) = (N₀ - D / (2theta)) * exp(-theta * (t1 + t2)) + D / (2theta) * exp(-theta * abs(t1 - t2))
+  exact = [F_ana(t1, t2) for t1 in sol.t, t2 in sol.t]
+
+  @test F.data ≈ exact atol=atol rtol=1e-5
+end
+
+@testset "Geometric Brownian motion" begin
+  atol = 1e-9
+  rtol = 1e-7
+  mu = 1.0
+  sigma = 0.5
+  S₀ = 2.0
+  T = 1.0
+
+  S = GreenFunction(S₀ * ones(1, 1), Symmetrical)
+  F = GreenFunction(0.0 * ones(1, 1), Symmetrical)
+
+  function fv!(out, _, _, _, t1, t2)
+    out[1] = 0
+    out[2] = mu * F[t1, t2]
+  end
+
+  function fd!(out, _, _, _, t1, t2)
+    out[1] = mu * S[t1, t2]
+    out[2] = 2mu * F[t1, t2] + sigma^2 * (S[t1, t2]^2 + F[t1, t2])
+  end
+
+  sol = kbsolve!(fv!, fd!, [S, F], (0.0, T); atol=atol, rtol=rtol, dtini=1e-10)
+
+  F_ana(t1, t2) = S₀^2 * exp(mu * (t1 + t2)) * (exp(sigma^2 * min(t1, t2)) - 1)
+  exact = [F_ana(t1, t2) for t1 in sol.t, t2 in sol.t]
+
+  @test F.data ≈ exact atol=atol rtol=1e-5
+end
+
+@testset "Bose-Einstein condensate" begin
+  atol = 1e-6
+  rtol = 1e-4
+  ω₀ = 1.0
+  D = 1.0
+  N = 1.0
+  δN = 0.0
+
+  φ = GreenFunction(zeros(ComplexF64, 1), OnePoint)
+  GK = GreenFunction(zeros(ComplexF64, 1, 1), SkewHermitian)
+
+  GK[1, 1] = -im * (2δN + 1)
+  φ[1] = sqrt(2N)
+
+  function fv!(out, ts, h1, h2, t, t′)
+    out[1] = zero(out[1])
+  end
+
+  function fd!(out, ts, h1, h2, t, _)
+    out[1] = -im * (2D * abs2(φ[t]))
+  end
+
+  function f1!(out, ts, h1, t)
+    out[1] = -im * ω₀ * φ[t] - D * φ[t]
+  end
+
+  sol = kbsolve!(fv!, fd!, [GK,], (0.0, 1.0); atol=atol, rtol=rtol, v0=[φ,], f1! = f1!)
+
+  # Analytical: φ(t) = φ(0) exp((-iω₀ - D)t), so |φ(t)|² = 2N exp(-2Dt)
+  φ_ana(t) = sqrt(2N) * exp((-im * ω₀ - D) * t)
+
+  @test φ[:] ≈ [φ_ana(t) for t in sol.t] atol=1e-2 rtol=1e-2
+  # Condensate occupation should decay exponentially
+  @test [abs2(φ[k]) / 2 for k in eachindex(sol.t)] ≈ [N * exp(-2D * t) for t in sol.t] atol=1e-2 rtol=1e-2
+end
