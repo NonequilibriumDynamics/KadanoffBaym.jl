@@ -1,10 +1,13 @@
 
 # KadanoffBaym.jl
 
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://nonequilibriumdynamics.github.io/KadanoffBaym.jl/stable/)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://nonequilibriumdynamics.github.io/KadanoffBaym.jl/dev/)
 [![CI](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/workflows/CI/badge.svg)](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/actions?query=workflow%3ACI)
 [![codecov](https://codecov.io/gh/NonequilibriumDynamics/KadanoffBaym.jl/branch/master/graph/badge.svg?token=AAZVQLIKN2)](https://codecov.io/gh/NonequilibriumDynamics/KadanoffBaym.jl)
-[![Julia compat](https://img.shields.io/badge/julia-%E2%89%A5%201.10-blue)](https://julialang.org/)
+[![version](https://juliahub.com/docs/KadanoffBaym/version.svg)](https://juliahub.com/ui/Packages/General/KadanoffBaym)
+[![Julia compat](https://img.shields.io/badge/julia-%E2%89%A5%201.12-blue)](https://julialang.org/)
+[![license](https://img.shields.io/github/license/NonequilibriumDynamics/KadanoffBaym.jl)](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/blob/master/LICENSE)
 [![DOI](https://img.shields.io/badge/DOI-10.21468%2FSciPostPhysCore.5.2.030-blue)](https://doi.org/10.21468/SciPostPhysCore.5.2.030)
 
 ## Overview
