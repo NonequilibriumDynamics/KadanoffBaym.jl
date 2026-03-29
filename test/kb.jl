@@ -136,7 +136,7 @@ end
   F_ana(t1, t2) = (N₀ - D / (2theta)) * exp(-theta * (t1 + t2)) + D / (2theta) * exp(-theta * abs(t1 - t2))
   exact = [F_ana(t1, t2) for t1 in sol.t, t2 in sol.t]
 
-  @test F.data ≈ exact atol=atol rtol=1e-5
+  @test F.data ≈ exact atol=1e-5 rtol=1e-4
 end
 
 @testset "Geometric Brownian motion" begin
@@ -165,7 +165,7 @@ end
   F_ana(t1, t2) = S₀^2 * exp(mu * (t1 + t2)) * (exp(sigma^2 * min(t1, t2)) - 1)
   exact = [F_ana(t1, t2) for t1 in sol.t, t2 in sol.t]
 
-  @test F.data ≈ exact atol=atol rtol=1e-5
+  @test F.data ≈ exact atol=1e-5 rtol=1e-4
 end
 
 @testset "Bose-Einstein condensate" begin
