@@ -9,16 +9,14 @@ A simple time-ordered Green function structure for a hassle-free computation of 
   - `L::AbstractMatrix`: The *lesser* component
   - `G::AbstractMatrix`: The *greater* component
 """
-struct TimeOrderedGreenFunction <: AbstractTimeOrderedGreenFunction
-  L   # Lesser
-  G   # Greater  
+struct TimeOrderedGreenFunction{T} <: AbstractTimeOrderedGreenFunction
+  L::T   # Lesser
+  G::T   # Greater
 end
 
 Base.:*(a::Number, g::TimeOrderedGreenFunction) = TimeOrderedGreenFunction(a * lesser(g), a * greater(g))
 Base.:+(g1::TimeOrderedGreenFunction, g2::TimeOrderedGreenFunction) = TimeOrderedGreenFunction(lesser(g1) + lesser(g2), greater(g1) + greater(g2))
 
-"""
-"""
 struct TimeOrderedConvolution{TA<:AbstractTimeOrderedGreenFunction, TB<:AbstractTimeOrderedGreenFunction} <: AbstractTimeOrderedGreenFunction
   L::TA
   R::TB

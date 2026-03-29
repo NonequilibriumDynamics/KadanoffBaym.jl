@@ -99,7 +99,7 @@ function kbsolve!(fv!::Function, fd!::Function, u0::Vector{<:AbstractGreenFuncti
 
   function f1t!()
     t1 = length(state.t)
-    f1!(view(cache_v.f_next, :), state.t, state.w[t1], t1)
+    f1!(view(cache_v.f_next, 1, :), state.t, state.w[t1], t1)
     return cache_v.f_next
   end
 

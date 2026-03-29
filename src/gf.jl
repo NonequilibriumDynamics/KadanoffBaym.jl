@@ -22,7 +22,7 @@ struct SkewHermitian <: AbstractSymmetry end
 """
     OnePoint
 """
-struct OnePoint <: KadanoffBaym.AbstractSymmetry end
+struct OnePoint <: AbstractSymmetry end
 
 @inline symmetry(::Type{<:AbstractSymmetry}) = error("Not defined")
 @inline symmetry(::Type{Symmetrical}) = transpose
@@ -132,22 +132,7 @@ for g in (:GreenFunction,)
   end
 end
 
-function Base.show(io::IO, x::GreenFunction)
-  #if get(io, :compact, false) || get(io, :typeinfo, nothing) == GreenFunction
-  #  return Base.show_default(IOContext(io, :limit => true), x)
-  #else
-  #  # dump(IOContext(io, :limit => true), p, maxdepth=1)
-  #  for field in fieldnames(typeof(x))
-  #    if field === :data
-  #      print(io, "\ndata: ")
-  #      Base.show(io, MIME"text/plain"(), x.data)
-  #    else
-  #      Base.show(io, getfield(x, field))
-  #    end
-  #  end
-  #end
-  return show(io, x.data)
-end
+Base.show(io::IO, x::GreenFunction) = show(io, x.data)
 
 Base.resize!(A::GreenFunction, t::Int) = (A.data = _resize!(A.data, t); A)
 
