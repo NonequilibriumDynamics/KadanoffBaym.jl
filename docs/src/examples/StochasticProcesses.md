@@ -1,4 +1,4 @@
-# [Stochastic Processes] (@id StochasticProcesses)
+# [Stochastic Processes](@id StochasticProcesses)
 
 `KadanoffBaym.jl` can also be used to simulate _stochastic processes_. Below, we will give the simplest example to illustrate how to do this. In cases where [other methods](https://diffeq.sciml.ai/stable/tutorials/sde_example/) are too expensive or inapplicable, this approach can be an economic and insightful alternative. 
 
@@ -6,7 +6,7 @@
     More background on the connection between `KadanoffBaym.jl` and stochastic processes can be found in section 4.2 of [our paper](https://doi.org/10.21468/SciPostPhysCore.5.2.030) and also [here](https://doi.org/10.1088/1751-8121/ac73c6).
 
 
-## [Ornstein-Uhlenbeck Process] (@id OUProcess)
+## [Ornstein-Uhlenbeck Process](@id OUProcess)
 
 The Ornstein-Uhlenbeck (OU) process\cite{VanKampen2007, gardiner1985handbook} is defined by the stochastic differential equation (SDE)
 ```math

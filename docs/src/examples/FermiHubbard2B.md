@@ -1,4 +1,4 @@
-# [Fermi-Hubbard Model I] (@id FHM_I)
+# [Fermi-Hubbard Model I](@id FHM_I)
 
 !!! note
     A [Jupyter notebook](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/blob/master/examples/fermi-hubbard.ipynb) related to this example is available in our [examples folder](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/tree/master/examples).
