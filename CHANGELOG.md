@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.4.1 (2026-03-29)
+
+### Bug fixes
+- Fixed crash with matrix-valued GreenFunctions (e.g. `GreenFunction(zeros(ComplexF64, 2, 2, 1, 1), SkewHermitian)`) on RecursiveArrayTools v3: `VectorOfArray[i, :]` now returns collapsed arrays, so `extend!` accesses `.u` directly to preserve element types
+
+### Tests
+- Added fermionic dimer test (2-site tight-binding with exact matrix exponential solution)
+- Added Ornstein-Uhlenbeck (Brownian motion) test with closed-form analytical solution
+- Added geometric Brownian motion test with coupled nonlinear dynamics
+- Added Bose-Einstein condensate test with mixed OnePoint/SkewHermitian evolution
+- Test count increased from 27 to 32
+
+### Other
+- Minimum Julia raised to 1.12
+- Added list of 21 papers citing the SciPost publication to README and docs
+- Added stable docs, version, and license badges to README
+
 ## v1.4.0 (2026-03-29)
 
 ### Infrastructure
