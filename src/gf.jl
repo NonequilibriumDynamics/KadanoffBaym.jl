@@ -33,7 +33,7 @@ struct OnePoint <: AbstractSymmetry end
 
 A container interface for `g` with array indexing respecting some symmetry rule `s`.
 Because of that, `g` must be square in its last 2 dimensions, which can be resized 
-with [`resize!`](@ref).
+with `resize!`.
 
 The array `g` is not restricted to being contiguous. For example, `g` can have
 `Matrix{T}`, `Array{T,4}`, `Matrix{SparseMatrixCSC{T}}`, etc as its type.

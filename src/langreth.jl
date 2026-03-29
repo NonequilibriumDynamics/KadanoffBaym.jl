@@ -38,10 +38,32 @@ function conv(L::AbstractTimeOrderedGreenFunction, R::AbstractTimeOrderedGreenFu
   return TimeOrderedGreenFunction(lesser(c), greater(c))
 end
 
-# Langreth's rules
+"""
+    greater(g::AbstractTimeOrderedGreenFunction)
+
+Extract the *greater* Keldysh component ``G^>(t,t')``.
+"""
 greater(g::TimeOrderedGreenFunction) = g.G
+
+"""
+    lesser(g::AbstractTimeOrderedGreenFunction)
+
+Extract the *lesser* Keldysh component ``G^<(t,t')``.
+"""
 lesser(g::TimeOrderedGreenFunction) = g.L
+
+"""
+    advanced(g::AbstractTimeOrderedGreenFunction)
+
+Compute the *advanced* Green function ``G^A = G^< - G^>``.
+"""
 advanced(g::TimeOrderedGreenFunction) = UpperTriangular(lesser(g) - greater(g))
+
+"""
+    retarded(g::AbstractTimeOrderedGreenFunction)
+
+Compute the *retarded* Green function ``G^R = (G^A)^\\dagger``.
+"""
 retarded(g::TimeOrderedGreenFunction) = adjoint(advanced(g))
 
 greater(c::TimeOrderedConvolution) = (retarded(c.L) .* adjoint(c.ws)) * greater(c.R) + greater(c.L) * (c.ws .* advanced(c.R)) |> skew_hermitify!
