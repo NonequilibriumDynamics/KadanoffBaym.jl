@@ -13,7 +13,8 @@ makedocs(
                                "examples/FermiHubbardTM.md",
                                "examples/OpenBoseDimer.md",
                                "examples/BoseEinsteinCondensate.md",
-                               "examples/StochasticProcesses.md"]
+                               "examples/StochasticProcesses.md"],
+                "Papers using KadanoffBaym.jl" => "citing.md"
             ],
     warnonly = true,
     )

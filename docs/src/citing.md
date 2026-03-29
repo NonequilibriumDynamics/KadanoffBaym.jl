@@ -1,46 +1,6 @@
+# Papers using KadanoffBaym.jl
 
-# KadanoffBaym.jl
-
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://nonequilibriumdynamics.github.io/KadanoffBaym.jl/stable/)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://nonequilibriumdynamics.github.io/KadanoffBaym.jl/dev/)
-[![CI](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/workflows/CI/badge.svg)](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/actions?query=workflow%3ACI)
-[![codecov](https://codecov.io/gh/NonequilibriumDynamics/KadanoffBaym.jl/branch/master/graph/badge.svg?token=AAZVQLIKN2)](https://codecov.io/gh/NonequilibriumDynamics/KadanoffBaym.jl)
-[![version](https://juliahub.com/docs/KadanoffBaym/version.svg)](https://juliahub.com/ui/Packages/General/KadanoffBaym)
-[![Julia compat](https://img.shields.io/badge/julia-%E2%89%A5%201.12-blue)](https://julialang.org/)
-[![license](https://img.shields.io/github/license/NonequilibriumDynamics/KadanoffBaym.jl)](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/blob/master/LICENSE)
-[![DOI](https://img.shields.io/badge/DOI-10.21468%2FSciPostPhysCore.5.2.030-blue)](https://doi.org/10.21468/SciPostPhysCore.5.2.030)
-
-## Overview
-
-`KadanoffBaym.jl` is an *adaptive* solver for Kadanoff-Baym equations written in Julia. To learn more about the solver and Kadanoff-Baym equations, have a look into our [accompanying paper](https://doi.org/10.21468/SciPostPhysCore.5.2.030).
-
-## Documentation
-
-The documentation can be found [here](https://nonequilibriumdynamics.github.io/KadanoffBaym.jl).
-
-## Contributing
-
-This is meant to be a community project and all contributions, via [issues](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/issues), [PRs](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/pulls) and [discussions](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/discussions) are encouraged and greatly appreciated.
-
-## Citing
-
-If you use `KadanoffBaym.jl` in your research, please cite our work:
-```
-@Article{10.21468/SciPostPhysCore.5.2.030,
-	title={{Adaptive Numerical Solution of Kadanoff-Baym Equations}},
-	author={Francisco Meirinhos and Michael Kajan and Johann Kroha and Tim Bode},
-	journal={SciPost Phys. Core},
-	volume={5},
-	issue={2},
-	pages={30},
-	year={2022},
-	publisher={SciPost},
-	doi={10.21468/SciPostPhysCore.5.2.030},
-	url={https://scipost.org/10.21468/SciPostPhysCore.5.2.030},
-}
-```
-
-## Papers using KadanoffBaym.jl
+The following papers cite [our work](https://doi.org/10.21468/SciPostPhysCore.5.2.030). If your paper is missing, please [open an issue](https://github.com/NonequilibriumDynamics/KadanoffBaym.jl/issues) or a pull request.
 
 1. Skachkov *et al.*, [Linear and nonlinear optical response based on many-body GW-Bethe-Salpeter and Kadanoff-Baym approaches for two-dimensional layered semiconductors](https://doi.org/10.1038/s41699-025-00627-4), npj 2D Mater. Appl. **10**, 15 (2026)
 2. Erpenbeck *et al.*, [Compact representation and long-time extrapolation of real-time data for quantum systems using the ESPRIT algorithm](https://doi.org/10.1103/8vzv-y74m), Phys. Rev. B **113**, 115129 (2026)
