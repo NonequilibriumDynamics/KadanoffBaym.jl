@@ -1,4 +1,4 @@
-# [Fermi-Hubbard Model II] (@id FHM_II)
+# [Fermi-Hubbard Model II](@id FHM_II)
 
 !!! note
     This example is the continuation of [Fermi-Hubbard Model I](@ref FHM_I). It is recommended that you familiarize yourself with the latter first.

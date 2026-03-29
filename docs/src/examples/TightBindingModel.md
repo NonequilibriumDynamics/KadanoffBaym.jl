@@ -1,4 +1,4 @@
-# [Tight-Binding Model] (@id TightBinding)
+# [Tight-Binding Model](@id TightBinding)
 
 
 To get a feeling for how to use `KadanoffBaym.jl`, we begin by solving a simple example, the so-called tight-binding model:

@@ -1,4 +1,4 @@
-# [Bose-Einstein Condensate] (@id BEC)
+# [Bose-Einstein Condensate](@id BEC)
 
 In this example we will use `KadanoffBaym.jl` to study _dephasing_ in Bose-Einstein condensates (see Chp. 3 [here](https://bonndoc.ulb.uni-bonn.de/xmlui/handle/20.500.11811/8961)). To do this, we will need to solve _one-time_ differential equations for the condensate amplitude ``\varphi(t)`` and the so-called equal-time _Keldysh Green_ function ``G^K(t, t)``.
 

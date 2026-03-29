@@ -1,4 +1,4 @@
-# [Open Bose Dimer] (@id OpenBose)
+# [Open Bose Dimer](@id OpenBose)
 
 A nice example to illustrate how one can use `KadanoffBaym.jl` to study *open systems* is the Bose dimer depicted below.
 
