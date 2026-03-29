@@ -55,6 +55,9 @@ kbsolve!
 
 ```@docs
 GreenFunction
+Symmetrical
+SkewHermitian
+OnePoint
 ```
 
 ### Wigner Transformation
@@ -71,6 +74,10 @@ TimeOrderedGreenFunction
 
 ```@docs
 conv
+greater
+lesser
+retarded
+advanced
 ```
 
 ## Citation
