@@ -1,4 +1,4 @@
-# Part of the following code is licensed under the MIT "Expact" Lience, 
+# Part of the following code is licensed under the MIT "Exact" License,
 # from https://github.com/SciML/OrdinaryDiffEq.jl
 mutable struct VCABMCache{T,U}
   u_prev::U
@@ -198,4 +198,4 @@ function ϕ_np1!(cache, du_np1, k)
   end
 end
 
-const γstar = [1, -1 / 2, -1 / 12, -1 / 24, -19 / 720, -3 / 160, -863 / 60480, -275 / 24192, -33953 / 3628800, -0.00789255, -0.00678585, -0.00592406, -0.00523669, -0.0046775, -0.00421495, -0.0038269]
+const γstar = [1, -1//2, -1//12, -1//24, -19//720, -3//160, -863//60480, -275//24192, -33953//3628800, -8183//1036800, -3250433//479001600, -4671//788480, -13695779093//2615348736000, -2224234463//475517952000, -132282840127//31384184832000, -2639651053//689762304000]

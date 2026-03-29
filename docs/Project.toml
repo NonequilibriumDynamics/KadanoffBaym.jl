@@ -3,4 +3,4 @@ Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 KadanoffBaym = "82532805-809c-4ef0-842b-4b00c5e9be5f"
 
 [compat]
-Documenter = "0.27"
+Documenter = "1"
