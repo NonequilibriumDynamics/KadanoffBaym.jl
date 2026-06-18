@@ -1,6 +1,11 @@
 # Changelog
 
-## v1.4.1 (2026-03-29)
+## v1.5.0 (2026-06-18)
+
+> Released as a minor version (not a patch) because the minimum Julia was raised
+> from 1.10 to 1.12, which narrows the supported Julia range. Julia's AutoMerge
+> forbids narrowing the supported Julia versions in a patch release, so the
+> never-registered `v1.4.1` tag is superseded by this `v1.5.0` release.
 
 ### Bug fixes
 - Fixed crash with matrix-valued GreenFunctions (e.g. `GreenFunction(zeros(ComplexF64, 2, 2, 1, 1), SkewHermitian)`) on RecursiveArrayTools v3: `VectorOfArray[i, :]` now returns collapsed arrays, so `extend!` accesses `.u` directly to preserve element types
