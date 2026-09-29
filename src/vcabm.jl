@@ -35,7 +35,8 @@ function predict!(cache::VCABMCache, times)
   (; u_prev, u_next, g, ϕstar_n, k) = cache
   @inbounds begin
     ϕ_and_ϕstar!(cache, times, k + 1 == length(times) ? k : k + 1)
-    g_coeffs!(cache, times, k + 1 == length(times) ? k : k + 1)
+    # The first step (k == 1) is corrected with g[2], which only needs two time points
+    g_coeffs!(cache, times, k + 1 == length(times) ? max(k, 2) : k + 1)
     @. u_next = muladd(g[1], ϕstar_n[1], u_prev)
     for i in 2:(k - 1)
       @. u_next = muladd(g[i], ϕstar_n[i], u_next)
@@ -49,7 +50,10 @@ function correct!(cache::VCABMCache, f)
   (; u_next, g, ϕ_np1, ϕstar_n, k) = cache
   @inbounds begin
     ϕ_np1!(cache, f(), k + 1)
-    @. u_next = muladd(g[k], ϕ_np1[k], u_next)
+    # The predictor at k == 1 is already an explicit Euler step (same as k == 2), so it
+    # must be corrected like k == 2: u1 = u0 + h/2 (f0 + f1) instead of u0 + h (f0 + f1)
+    kc = max(k, 2)
+    @. u_next = muladd(g[kc], ϕ_np1[kc], u_next)
   end
   return u_next
 end
