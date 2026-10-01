@@ -1,69 +1,86 @@
-function integrate(x::AbstractVector, y::AbstractVector)
-  if isone(length(y))
-    return zero(first(y))
-  end
-  @inbounds retval = (x[2] - x[1]) * (y[1] + y[2])
-  @inbounds @fastmath @simd for i in 2:(length(y)-1)
-    retval += (x[i+1] - x[i]) * (y[i] + y[i+1])
-  end
-  return 1 // 2 * retval
-end
-
-function compute(A, B, ts)
-  l = zero(lesser(A))
-  for i in 1:size(l, 1)
-    for j in 1:i
-      l[i,j] += integrate(ts, greater(A)[i, 1:i] .* lesser(B)[1:i, j])
-      l[i,j] -= integrate(ts, lesser(A)[i, 1:j] .* greater(B)[1:j, j])
-      l[i,j] -= integrate(ts[j:i], lesser(A)[i, j:i] .* lesser(B)[j:i, j])
-
-      l[j,i] = -conj(l[i,j])
-    end
-    l[i,i] = eltype(l) <: Real ? 0.0 : im * imag(l[i,i])
-  end
-  
-  g = zero(greater(A))
-  for i in 1:size(g, 1)
-    for j in 1:i
-      g[i,j] -= integrate(ts, lesser(A)[i, 1:i] .* greater(B)[1:i, j])
-      g[i,j] += integrate(ts, greater(A)[i, 1:j] .* lesser(B)[1:j, j])
-      g[i,j] += integrate(ts[j:i], greater(A)[i, j:i] .* greater(B)[j:i, j])
-
-      g[j,i] = -conj(g[i,j])
-    end
-    g[i,i] = eltype(g) <: Real ? 0.0 : im * imag(g[i,i])
-  end
-  
-  TimeOrderedGreenFunction(l, g)
-end
-
-N = 100
-
-# Suppose a non-equidistant time-grid
-ts = sort(N*rand(N));
-
-# And 2 time-ordered GFs defined on that grid
-a = let
-  x = rand(ComplexF64,N,N)
-  y = rand(ComplexF64,N,N)
-  TimeOrderedGreenFunction(x - x', y - y') # Skew-symmetric L and G components
-end
-b = let
-  x = rand(ComplexF64,N,N)
-  y = rand(ComplexF64,N,N)
-  TimeOrderedGreenFunction(x - x', y - y') # Skew-symmetric L and G components
-end
-
-dts = let
-  ws = KadanoffBaym.initialize_weights(ts) # Trapezium rule by default
-  reduce(hcat, [[w; zeros(length(ts) - length(w))] for w in ws]) |> UpperTriangular
-end
-⋆(a, b) = conv(a, b, dts)
-
 @testset "Langreth's rules" begin
-  @test greater(a ⋆ b) ≈ greater(compute(a, b, ts))
-  @test lesser(a ⋆ b) ≈ lesser(compute(a, b, ts))
-  @test retarded(a ⋆ b) ≈ retarded(compute(a, b, ts))
-  @test greater(a ⋆ b ⋆ a) ≈ greater(compute(compute(a, b, ts), a, ts))
-  @test retarded(a ⋆ b ⋆ a) ≈ retarded(compute(compute(a, b, ts), a, ts))
+  trapezoid(ts, f) = sum(
+    (ts[i+1] - ts[i]) * (f[i] + f[i+1]) / 2 for i in 1:(length(f) - 1);
+    init=zero(eltype(f)),
+  )
+
+  function reference(A, B, ts)
+    component(a, b) = [
+      trapezoid(ts[1:i], (greater(A)[i, 1:i] - lesser(A)[i, 1:i]) .* b[1:i, j]) +
+      trapezoid(ts[1:j], a[i, 1:j] .* (lesser(B)[1:j, j] - greater(B)[1:j, j]))
+      for i in eachindex(ts), j in eachindex(ts)
+    ]
+    return TimeOrderedGreenFunction(
+      component(lesser(A), lesser(B)),
+      component(greater(A), greater(B)),
+    )
+  end
+
+  ts = [0.0, 0.07, 0.15, 0.38, 0.9, 1.3, 2.0]
+  ws = UpperTriangular(reduce(hcat, [
+    [w; zeros(length(ts) - length(w))] for w in KadanoffBaym.initialize_weights(ts)
+  ]))
+  A = TimeOrderedGreenFunction(
+    [im * exp(-im * (t - s)) for t in ts, s in ts],
+    [-2im * exp(-2im * (t - s)) for t in ts, s in ts],
+  )
+  B = TimeOrderedGreenFunction(
+    [im * (t + s) for t in ts, s in ts],
+    [-im * (1 + t * s) for t in ts, s in ts],
+  )
+  C = conv(A, B, ws)
+  expected = reference(A, B, ts)
+  @test lesser(C) ≈ lesser(expected)
+  @test greater(C) ≈ greater(expected)
+
+  nested = conv(C, A, ws)
+  expected_nested = reference(expected, A, ts)
+  @test lesser(nested) ≈ lesser(expected_nested)
+  @test greater(nested) ≈ greater(expected_nested)
+  @test retarded(im * A) ≈ im * retarded(A)
+  @test advanced(im * A) ≈ im * advanced(A)
+  @test lesser(conv(im * A, B, ws)) ≈ im * lesser(C)
+  @test greater(conv(A, im * B, ws)) ≈ im * greater(C)
+
+  @testset "Exact polynomial convolution" begin
+    A = TimeOrderedGreenFunction(im * ones(length(ts), length(ts)), -im * ones(length(ts), length(ts)))
+    B = TimeOrderedGreenFunction([im * (t + s) for t in ts, s in ts], zeros(ComplexF64, length(ts), length(ts)))
+    C = conv(A, B, ws)
+    @test lesser(C) ≈ [t^2 + 2t*s - 3s^2 / 2 for t in ts, s in ts]
+    @test greater(C) ≈ [3s^2 / 2 for t in ts, s in ts]
+    @test retarded(C) ≈ [t >= s ? 3s^2 - t^2 - 2t*s : 0.0 for t in ts, s in ts]
+    @test advanced(C) ≈ [t <= s ? t^2 + 2t*s - 3s^2 : 0.0 for t in ts, s in ts]
+  end
+end
+
+@testset "Langreth products preserve noncommuting matrix order" begin
+  ts = [0.0, 0.1, 0.4, 0.8]
+  ws = UpperTriangular(reduce(hcat, [
+    [w; zeros(length(ts) - length(w))] for w in KadanoffBaym.initialize_weights(ts)
+  ]))
+  M = ComplexF64[1 2im; 3 4]
+  N = ComplexF64[2im 1; 0 3]
+  A = TimeOrderedGreenFunction(
+    [(1+t)*M + s*N for t in ts, s in ts],
+    [t*s*M + (2+t)*N for t in ts, s in ts],
+  )
+  B = TimeOrderedGreenFunction(
+    [t*N + (1+s)*M for t in ts, s in ts],
+    [t*M - s*N for t in ts, s in ts],
+  )
+  function reference(A, B, a, b)
+    [sum(ws[k,i] * (greater(A)[i,k] - lesser(A)[i,k]) * b[k,j] for k in 1:i) +
+     sum(ws[k,j] * a[i,k] * (lesser(B)[k,j] - greater(B)[k,j]) for k in 1:j)
+     for i in eachindex(ts), j in eachindex(ts)]
+  end
+  C = conv(A, B, ws)
+  CL = reference(A, B, lesser(A), lesser(B))
+  CG = reference(A, B, greater(A), greater(B))
+  @test all(isapprox.(lesser(C), CL))
+  @test all(isapprox.(greater(C), CG))
+
+  expected = TimeOrderedGreenFunction(CL, CG)
+  nested = conv(C, A, ws)
+  @test all(isapprox.(lesser(nested), reference(expected, A, CL, lesser(A))))
+  @test all(isapprox.(greater(nested), reference(expected, A, CG, greater(A))))
 end

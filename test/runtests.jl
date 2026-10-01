@@ -1,5 +1,6 @@
 using KadanoffBaym
 using LinearAlgebra
+using SparseArrays
 using Test
 
 @testset verbose=true "KadanoffBaym.jl" begin
