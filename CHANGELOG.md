@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.6.0 (unreleased)
+
+### Numerical correctness
+- Correct Adams startup, predictor/corrector pairing, and embedded error estimates. Control all coupled one-time and two-time fields together; preserve accepted history across rejected steps and restarts, respect step limits, and handle mixed time precision.
+- Reconstruct new-column Adams history from the physical lower triangle, eliminating above-diagonal RHS evaluations. Stabilize Volterra weights on uneven grids and rebuild weights for supplied histories.
+- Add `quadrature=:piecewise` for continuous memory kernels with a derivative cusp at the second time argument. It uses causal panel stencils and caps Adams order at three. Tolerances control the Adams estimate; memory quadrature still requires a convergence check.
+- Correct GreenFunction time-exchange symmetry, copying, indexing, and packed-storage growth. Preserve full Langreth convolution components, including noncommuting matrix blocks, without imposing an invalid skew-Hermitian projection.
+- Correct odd-grid Wigner lag sampling, Float32 output, and Fourier spacing. Document the unchanged Fourier convention and the information omitted by the discrete Wigner representation.
+- Correct Hubbard Hartree signs and time-local interaction vertices in the examples. Solve T-matrix endpoint equations directly with an LU factorization.
+
+### Implementation and validation
+- Remove RecursiveArrayTools. Use ordinary field-major arrays, accepted Newton differences, and reusable numerical buffers for the coupled Adams state.
+- Add independent trapezoidal and joint Lobatto reference solvers, polynomial identities, quantum convergence tests, and allocation/runtime benchmarks. Reference solvers remain experimental test and benchmark tools.
+
+### Compatibility notes
+- RHS assignment `out[a] = value` now copies into field-owned storage and preserves its axes and element type. Use `out[a] .= value` to write directly; reusable workspaces must be local to each thread. Corrected error control can change adaptive grids at the same tolerances.
+- Packed matrix-valued GreenFunctions now expose the two time axes as their array dimensions. Whole-container transpose/adjoint use Base views; arithmetic returns ordinary arrays when the original symmetry is not preserved. In particular, `imag` of a skew-Hermitian GreenFunction is symmetric, and non-real scalar scaling returns an ordinary array. Code relying on exact result types or `.data` after these operations may need adjustment.
+
 ## v1.5.0 (2026-06-18)
 
 > Released as a minor version (not a patch) because the minimum Julia was raised
