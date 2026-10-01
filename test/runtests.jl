@@ -10,6 +10,9 @@ using Test
 
   @testset "Solver" begin
     include("quadrature.jl")
+    include("reference.jl")
+    include("trapezoid.jl")
+    include("lobatto.jl")
     include("utils.jl")
     include("vcabm.jl")
     include("kb.jl")
