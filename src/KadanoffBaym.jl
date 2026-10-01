@@ -3,14 +3,13 @@ module KadanoffBaym
 using LinearAlgebra
 using SpecialMatrices
 using AbstractFFTs
-using RecursiveArrayTools
 
 include("utils.jl")
 
 include("gf.jl")
 export GreenFunction, Symmetrical, SkewHermitian, OnePoint
 
-include("vie.jl")
+include("quadrature.jl")
 include("vcabm.jl")
 include("kb.jl")
 export kbsolve!

@@ -9,6 +9,9 @@ using Test
   end
 
   @testset "Solver" begin
+    include("quadrature.jl")
+    include("utils.jl")
+    include("vcabm.jl")
     include("kb.jl")
   end
 

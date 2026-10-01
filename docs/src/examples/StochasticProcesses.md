@@ -102,8 +102,8 @@ function fv!(out, _, _, _, t1, t2)
 end
 ```
 
-!!! warning
-    In this numerical version of the analytical equation above, we have made explicit use of the fact that ``G^A(t, t') = 0`` when ``t > t'``. However, since `KadanoffBaym.jl` uses a so-called _multi-step predictor-corrector method_ to solve equations (i.e. a method using not a single point but _multiple_ points from the past to predict the next point), it can happen that points with ``t' > t`` are actually accessed, in which case the ``G^A(t, t')`` term in the above equation _does_ contribute. One way to prevent this would be to restrict the solver to using a one-step method early on, i.e. until enough points with ``t > t'`` are known. 
+!!! note
+    The vertical RHS is evaluated only on the physical lower triangle, ``t_1 \ge t_2``. The Adams method reconstructs the history needed by a new time column from this triangle, so the callback does not need an artificial continuation above the diagonal. The diagonal callback supplies the evolution along ``t_1=t_2`` separately.
 
 In "diagonal" time ``T`` we have
 ```julia

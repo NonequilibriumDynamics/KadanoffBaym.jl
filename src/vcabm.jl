@@ -5,163 +5,170 @@ mutable struct VCABMCache{T,U}
   u_next::U
   u_erro::U
 
-  f_prev::U
-  f_next::U
-
+  f_pred::U
+  # Accepted Newton differences remain unchanged during a trial; ϕ_n[1] = f_n.
   ϕ_n::Vector{U}
   ϕ_np1::Vector{U}
   ϕstar_n::Vector{U}
-  ϕstar_nm1::Vector{U}
 
-  c::Matrix{T}
+  c::Vector{T}
   g::Vector{T}
   k::Int
+  steps::Int
   error_k::T
 
-  β::Vector{T}
-  dts::Vector{T}
-  ξ::T 
-  ξ0::T
-
   function VCABMCache{T}(kmax, u_prev::U) where {T,U}
-    return new{T,typeof(u_prev)}(u_prev, zero.(u_prev), zero.(u_prev), zero.(u_prev), zero.(u_prev), [zero.(u_prev) for _ in 1:(kmax + 1)],
-                                 [zero.(u_prev) for _ in 1:(kmax + 2)], [zero.(u_prev) for _ in 1:(kmax + 1)], [zero.(u_prev) for _ in 1:(kmax + 1)],
-                                 zeros(T, kmax + 1, kmax + 1), zeros(T, kmax + 1), 1, zero(T), zeros(T, kmax + 1), zeros(T, kmax + 1), zero(T), zero(T))
+    return new{T,U}(u_prev, zero.(u_prev), zero.(u_prev), zero.(u_prev),
+                   [zero.(u_prev) for _ in 1:(kmax + 2)], [zero.(u_prev) for _ in 1:(kmax + 2)], [zero.(u_prev) for _ in 1:(kmax + 1)],
+                   zeros(T, kmax + 1), zeros(T, kmax + 1), 1, 0, zero(T))
   end
+end
+
+# The i-th time difference is known for s ≤ t[n-i]. Complete it with its
+# degree-(q-i) interpolant through t[n-i], …, t[n-q]. Diagonal evolution is excluded.
+function complete_triangle!(ϕ, times, degree, depth, scratch, fields)
+  n = length(times)
+  q = min(degree, n - 1)
+  columns = length(first(ϕ[1])) - 1
+  @inbounds for i in 1:min(q, depth), col in (n - i + 1):columns
+    for block in fields
+      d = ϕ[i + 1][block]
+      d[col] = _recursivecopy!(d[col], d[n - i])
+    end
+    for j in (i + 1):q
+      L = prod((times[col] - times[n - m]) / (times[n - j] - times[n - m]) for m in i:q if m != j; init=one(eltype(times)))
+      for block in fields
+        d, δ = ϕ[i + 1][block], scratch[block]
+        δ[col] = muladd!(δ[col], -1, d[n - i], d[n - j])
+        d[col] = muladd!(d[col], L, δ[col], d[col])
+      end
+    end
+  end
+  return ϕ
 end
 
 # Explicit Adams: Section III.5 Eq. (5.5)
-function predict!(cache::VCABMCache, times)
+function predict!(cache::VCABMCache, times; n2=0)
   (; u_prev, u_next, g, ϕstar_n, k) = cache
   @inbounds begin
-    ϕ_and_ϕstar!(cache, times, k + 1 == length(times) ? k : k + 1)
-    g_coeffs!(cache, times, k + 1 == length(times) ? k : k + 1)
-    @. u_next = muladd(g[1], ϕstar_n[1], u_prev)
-    for i in 2:(k - 1)
-      @. u_next = muladd(g[i], ϕstar_n[i], u_next)
+    ϕstar!(cache, times, min(k + 1, cache.steps + 1))
+    if n2 > 0
+      complete_triangle!(ϕstar_n, view(times, 1:(length(times) - 1)), k - 1, cache.steps, cache.u_erro, 1:n2)
+    end
+    g_coeffs!(cache, times, min(k + 2, length(times), length(g)))
+    muladd!(u_next, g[1], ϕstar_n[1], u_prev)
+    for i in 2:k
+      muladd!(u_next, g[i], ϕstar_n[i], u_next)
     end
   end
   return u_next
 end
 
-# Implicit Adams: Section III.5 Eq (5.7)
-function correct!(cache::VCABMCache, f)
-  (; u_next, g, ϕ_np1, ϕstar_n, k) = cache
-  @inbounds begin
-    ϕ_np1!(cache, f(), k + 1)
-    @. u_next = muladd(g[k], ϕ_np1[k], u_next)
-  end
+# Adams–Moulton evaluated at the predictor (one PECE correction): Section III.5 Eq (5.7)
+function correct!(cache::VCABMCache, f!)
+  (; u_next, g, ϕ_np1, k) = cache
+  f!(ϕ_np1[1])
+  ϕ_np1!(cache, k + 1)
+  muladd!(u_next, g[max(k, 2)], ϕ_np1[k + 1], u_next)
   return u_next
+end
+
+# E_j = A_{j+1}(f_c) - A_j(f_p).
+function adams_error!(cache::VCABMCache, j, atol, rtol; n2=0)
+  (; u_erro, u_prev, u_next, ϕ_np1, ϕstar_n, g) = cache
+  f_p = cache.f_pred
+  muladd!(u_erro, -1, f_p, ϕ_np1[1])
+  muladd!(u_erro, g[j], u_erro, 0)
+  muladd!(u_erro, g[j + 1] - g[j], ϕ_np1[j + 1], u_erro)
+  if n2 > 0
+    n = length(first(u_prev))
+    # D_m = ϕ_np1[m] - ϕ_np1[m-1] + ϕstar_n[m-1] vanishes outside reconstructed columns.
+    # Their contribution to E_j is ∑ (g[j] - g[m-1]) D_m.
+    for m in 3:j, r in 1:(m - 2), block in 1:n2
+      α = g[j] - g[m - 1]
+      E = u_erro[block]
+      E[n - r] = muladd!(E[n - r], α, ϕ_np1[m][block][n - r], E[n - r])
+      E[n - r] = muladd!(E[n - r], -α, ϕ_np1[m - 1][block][n - r], E[n - r])
+      E[n - r] = muladd!(E[n - r], α, ϕstar_n[m - 1][block][n - r], E[n - r])
+    end
+  end
+  calculate_residuals!(u_erro, u_erro, u_prev, u_next, atol, rtol)
+  return state_norm(u_erro)
 end
 
 # Control order: Section III.7 Eq. (7.7)
-function adjust!(cache::VCABMCache, cache_v, times, f2, f1, kmax, atol, rtol)
-  (; u_prev, u_next, g, ϕ_np1, ϕstar_n, k, u_erro) = cache
+function adjust!(cache::VCABMCache, times, f!, kmax, atol, rtol; n2=0)
+  (; g, k) = cache
   @inbounds begin
+    cache.f_pred, cache.ϕ_np1[1] = cache.ϕ_np1[1], cache.f_pred
+    f!(cache.ϕ_np1[1])
+    ϕ_np1!(cache, min(k + 2, cache.steps + 2))
+    if n2 > 0
+      complete_triangle!(cache.ϕ_np1, times, k + 1, cache.steps + 1, cache.u_erro, 1:n2)
+    end
+
     # Calculate error: Section III.7 Eq. (7.3)
-    calculate_residuals!(u_erro, ϕ_np1[k + 1], u_prev, u_next, atol, rtol, norm)
-    cache.error_k = norm(g[k + 1] - g[k]) * norm(u_erro)
-
-    # Fail step: Section III.7 Eq. (7.4)
-    if cache.error_k > one(cache.error_k)
-      return
+    if k == 1
+      muladd!(cache.u_erro, -1, cache.ϕstar_n[1], cache.f_pred)
+      calculate_residuals!(cache.u_erro, cache.u_erro, cache.u_prev, cache.u_next, atol, rtol)
+      cache.error_k = abs(g[2] - g[1]) * state_norm(cache.u_erro)
+    else
+      cache.error_k = adams_error!(cache, k, atol, rtol; n2)
     end
+    isnan(cache.error_k) && error("Local error is NaN at t = $(last(times)); the trial state or right-hand side is undefined.")
+    cache.error_k > one(cache.error_k) && return
 
-    cache.f_prev .= f2()
-    if !isnothing(cache_v)
-      cache_v.f_prev .= f1()
-    end
-
-    if length(times) <= 5 || k < 3
+    if cache.steps < 4 || k < 3
       cache.k = min(k + 1, 3, kmax)
     else
-      calculate_residuals!(u_erro, ϕ_np1[k], u_prev, u_next, atol, rtol, norm)
-      error_k1 = norm(g[k] - g[k - 1]) * norm(u_erro)
-      calculate_residuals!(u_erro, ϕ_np1[k - 1], u_prev, u_next, atol, rtol, norm)
-      error_k2 = norm(g[k - 1] - g[k - 2]) * norm(u_erro)
-
+      error_k1 = adams_error!(cache, k - 1, atol, rtol; n2)
+      error_k2 = adams_error!(cache, k - 2, atol, rtol; n2)
       if max(error_k2, error_k1) <= cache.error_k
         cache.k = k - 1
-      else
-        ϕ_np1!(cache, cache.f_prev, k + 2)
-        if !isnothing(cache_v)
-          ϕ_np1!(cache_v, cache_v.f_prev, k + 2)
-        end
-        calculate_residuals!(u_erro, ϕ_np1[k + 2], u_prev, u_next, atol, rtol, norm)
-        error_kstar = norm((times[end] - times[end - 1]) * γstar[k + 2]) * norm(u_erro)
+      elseif k < kmax && cache.steps >= k
+        calculate_residuals!(cache.u_erro, cache.ϕ_np1[k + 2], cache.u_prev, cache.u_next, atol, rtol)
+        error_kstar = abs(g[k + 2] - g[k + 1]) * state_norm(cache.u_erro)
         if error_kstar < cache.error_k
-          cache.k = min(k + 1, kmax)
-          cache.error_k = one(cache.error_k)   # constant dt
+          cache.k = k + 1
+          cache.error_k = one(cache.error_k)   # Limit step growth when increasing order.
         end
       end
     end
-    @. cache.u_prev = cache.u_next
-    cache.ϕstar_nm1, cache.ϕstar_n = cache.ϕstar_n, cache.ϕstar_nm1
-
-    if !isnothing(cache_v)
-      cache_v.k = cache.k
-      @. cache_v.u_prev = cache_v.u_next
-      cache_v.ϕstar_nm1, cache_v.ϕstar_n = cache_v.ϕstar_n, cache_v.ϕstar_nm1
-    end
+    cache.steps += 1
+    cache.u_prev, cache.u_next = cache.u_next, cache.u_prev
+    cache.ϕ_n, cache.ϕ_np1 = cache.ϕ_np1, cache.ϕ_n
   end
 end
 
-function extend!(cache::VCABMCache, times, fv!)
-  (; f_prev, f_next, u_prev, u_next, u_erro, ϕ_n, ϕ_np1, ϕstar_n, ϕstar_nm1, error_k) = cache
+function extend!(cache::VCABMCache, times, fv!, n2)
+  (; u_prev, u_next, u_erro, f_pred, ϕ_n, ϕ_np1, ϕstar_n, error_k) = cache
   @inbounds begin
-    t = length(times) - 1 # `t` from the last iteration
-    k = t == cache.k ? cache.k - 1 : cache.k
+    t = length(times) - 1
+    error_k > one(error_k) && return
 
-    if error_k > one(error_k)
-      return
+    for i in 1:n2
+      insert!(f_pred[i], t, zero(u_prev[i][t]))
+      for history in (ϕ_n, ϕ_np1, ϕstar_n), ϕ in history
+        insert!(ϕ[i], t, zero(u_prev[i][t]))
+      end
+      insert!(u_prev[i], t, copy(u_prev[i][t]))
+      insert!(u_next[i], t, zero(u_prev[i][t]))
+      insert!(u_erro[i], t, zero(u_prev[i][t]))
     end
-
-    _row = [zero(f_next.u[j][t]) for j in eachindex(f_next.u)]
-    _ϕ_n = [copy.(_row) for _ in eachindex(ϕ_n)]
-    _ϕ_np1 = [copy.(_row) for _ in eachindex(ϕ_np1)]
-    _ϕstar_n = [copy.(_row) for _ in eachindex(ϕstar_n)]
-    _ϕstar_nm1 = [copy.(_row) for _ in eachindex(ϕstar_nm1)]
-
-    # When extending, i.e., adding a new time column, an interpolant for the rhs in this column
-    # has to be built. Since sometimes fv! is discontinuous at the diagonal it is assumed that 
-    # fv! is built always assuming t1 > t2. This way, the interpolant (which requires points t1 < t2)
-    # is smooth and the solver does not stall.
-    for k′ in 1:k
-      fv!(max(1, t - 1 - k + k′), t) # result is stored in f_next
-      ϕ_and_ϕstar!((f_prev=[f_next.u[j][t] for j in eachindex(f_next.u)], ϕ_n=_ϕ_n, ϕstar_n=_ϕstar_n, ϕstar_nm1=_ϕstar_nm1), view(times, 1:(t - k + k′)), k′)
-      _ϕstar_nm1, _ϕstar_n = _ϕstar_n, _ϕstar_nm1
-    end
-
-    for i in eachindex(f_prev.u)
-      foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕ_n, _ϕ_n)
-      foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕ_np1, _ϕ_np1)
-      foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕstar_n, _ϕstar_n)
-      foreach((ϕ, ϕ′) -> insert!(ϕ.u[i], t, ϕ′[i]), ϕstar_nm1, _ϕstar_nm1)
-    end
-
-    fv!(t, t) # result is stored in f_next
-    for i in eachindex(u_prev.u)
-      insert!(f_prev.u[i], t, copy(f_next[t, i]))
-      insert!(f_next.u[i], t, zero(f_next[t, i]))
-      insert!(u_prev.u[i], t, copy(u_prev[t, i]))
-      insert!(u_next.u[i], t, zero(u_prev[t, i]))
-      insert!(u_erro.u[i], t, zero(u_prev[t, i]))
-    end
+    fv!(ϕ_n[1], t, t)
   end
 end
 
-# Section III.5: Eq (5.9-5.10)
-function ϕ_and_ϕstar!(cache, times, k)
-  (; f_prev, ϕstar_nm1, ϕ_n, ϕstar_n) = cache
+# Scale the accepted endpoint differences to the proposed step: Section III.5 Eq. (5.10)
+function ϕstar!(cache, times, k)
+  (; ϕ_n, ϕstar_n) = cache
   @inbounds begin
-    t = reverse(times)
+    t = @view times[end:-1:1]
     β = one(eltype(times))
-    ϕ_n[1] .= f_prev
-    ϕstar_n[1] .= f_prev
+    _recursivecopy!(ϕstar_n[1], ϕ_n[1])
     for i in 2:k
       β = β * (t[1] - t[i]) / (t[2] - t[i + 1])
-      @. ϕ_n[i] = ϕ_n[i - 1] - ϕstar_nm1[i - 1]
-      @. ϕstar_n[i] = β * ϕ_n[i]
+      muladd!(ϕstar_n[i], β, ϕ_n[i], 0)
     end
   end
 end
@@ -169,34 +176,27 @@ end
 function g_coeffs!(cache, times, k)
   (; c, g) = cache
   @inbounds begin
-    t = reverse(times)
+    t = @view times[end:-1:1]
     dt = t[1] - t[2]
     for i in 1:k
+      # Ascending q leaves c[q + 1] in the preceding recurrence row.
       for q in 1:(k - (i - 1))
         if i > 2
-          c[i, q] = muladd(-dt / (t[1] - t[i]), c[i - 1, q + 1], c[i - 1, q])
+          c[q] = muladd(-dt / (t[1] - t[i]), c[q + 1], c[q])
         elseif i == 1
-          c[i, q] = inv(q)
+          c[q] = one(dt) / q
         elseif i == 2
-          c[i, q] = inv(q * (q + 1))
+          c[q] = one(dt) / (q * (q + 1))
         end
       end
-      g[i] = c[i, 1] * dt
+      g[i] = c[1] * dt
     end
   end
 end
 
-function ϕ_np1!(cache, du_np1, k)
+function ϕ_np1!(cache, k)
   (; ϕ_np1, ϕstar_n) = cache
-  @inbounds begin
-    for i in 1:k
-      if i != 1
-        @. ϕ_np1[i] = ϕ_np1[i - 1] - ϕstar_n[i - 1]
-      else
-        @. ϕ_np1[i] = du_np1
-      end
-    end
+  @inbounds for i in 2:k
+    muladd!(ϕ_np1[i], -1, ϕstar_n[i - 1], ϕ_np1[i - 1])
   end
 end
-
-const γstar = [1, -1//2, -1//12, -1//24, -19//720, -3//160, -863//60480, -275//24192, -33953//3628800, -8183//1036800, -3250433//479001600, -4671//788480, -13695779093//2615348736000, -2224234463//475517952000, -132282840127//31384184832000, -2639651053//689762304000]
