@@ -19,6 +19,11 @@ using Test
     include("langreth.jl")
   end
 
+  @testset "Quantum examples" begin
+    include("examples.jl")
+    include("tmatrix.jl")
+  end
+
   @testset "Wigner" begin
     include("wigner.jl")
   end

@@ -20,22 +20,22 @@ where the ``\hat{c}_{i,\sigma}^{\dagger},\, \hat{c}_{i,\sigma}^{\phantom{\dagger
 The equations of motion for these Green functions in "vertical" time ``t`` can be written compactly as
 ```math
 \begin{align*}
-        (\mathrm{i}\partial_t - \boldsymbol{h}) \boldsymbol{G}_\sigma^\lessgtr(t, t') &= \int_{t_0}^{t}\mathrm{d}{s}  \left[\boldsymbol{\Sigma}_\sigma^>(t, s) - \boldsymbol{\Sigma}_\sigma^<(t, s) \right] \boldsymbol{G}_\sigma^\lessgtr(s, t') + \int_{t_0}^{t'}\mathrm{d}{s}  \boldsymbol{\Sigma}_\sigma^\lessgtr(t, s) \left[\boldsymbol{G}_\sigma^<(s, t') - \boldsymbol{G}_\sigma^>(s, t') \right],
+        (\mathrm{i}\partial_t - \boldsymbol{h} - \boldsymbol{\Sigma}^{\mathrm{HF}}_\sigma(t)) \boldsymbol{G}_\sigma^\lessgtr(t, t') &= \int_{t_0}^{t}\mathrm{d}{s}  \left[\boldsymbol{\Sigma}_\sigma^>(t, s) - \boldsymbol{\Sigma}_\sigma^<(t, s) \right] \boldsymbol{G}_\sigma^\lessgtr(s, t') + \int_{t_0}^{t'}\mathrm{d}{s}  \boldsymbol{\Sigma}_\sigma^\lessgtr(t, s) \left[\boldsymbol{G}_\sigma^<(s, t') - \boldsymbol{G}_\sigma^>(s, t') \right],
 \end{align*}
 ```
-where ``\boldsymbol{h}`` describes the single-particle contributions (i.e. the hopping), and the matrices ``\boldsymbol{G}^\lessgtr`` are assumed to be block-diagonal in the spin degree-of-freedom. The *Hartree-Fock* part of the self-energy now is
+where ``\boldsymbol{h}`` describes the single-particle contributions (i.e. the hopping), and the matrices ``\boldsymbol{G}^\lessgtr`` are assumed to be block-diagonal in the spin degree-of-freedom. The instantaneous *Hartree-Fock* contribution is
 ```math
 \begin{align*}
-    \Sigma^{\mathrm{HF}}_{\uparrow,\,ij}(t, t') = {\mathrm{i}}\delta_{ij}\delta(t - t') G^<_{\downarrow,ii}(t, t),\\
-    \Sigma^{\mathrm{HF}}_{\downarrow,\,ij}(t, t') = {\mathrm{i}}\delta_{ij}\delta(t - t') G^<_{\uparrow,ii}(t, t).
+    \Sigma^{\mathrm{HF}}_{\uparrow,\,ij}(t) = -\mathrm{i}U(t)\delta_{ij} G^<_{\downarrow,ii}(t, t),\\
+    \Sigma^{\mathrm{HF}}_{\downarrow,\,ij}(t) = -\mathrm{i}U(t)\delta_{ij} G^<_{\uparrow,ii}(t, t).
 \end{align*}    
 ```
 
 In the so-called _second Born approximation_, the contribution to next order in ``U`` is also taken into account:
 ```math
 \begin{align*}
-    \Sigma^\lessgtr_{ij, \uparrow}  (t, t') = U^2 G^\lessgtr_{ij, \uparrow}(t, t') G^\lessgtr_{ij, \downarrow}(t, t') G^\gtrless_{ji, \downarrow}(t', t),\\
-    \Sigma^\lessgtr_{ij, \downarrow}(t, t') = U^2 G^\lessgtr_{ij, \downarrow}(t, t') G^\lessgtr_{ij, \uparrow}(t, t') G^\gtrless_{ji, \uparrow}(t', t).
+    \Sigma^\lessgtr_{ij, \uparrow}  (t, t') = U(t)U(t') G^\lessgtr_{ij, \uparrow}(t, t') G^\lessgtr_{ij, \downarrow}(t, t') G^\gtrless_{ji, \downarrow}(t', t),\\
+    \Sigma^\lessgtr_{ij, \downarrow}(t, t') = U(t)U(t') G^\lessgtr_{ij, \downarrow}(t, t') G^\lessgtr_{ij, \uparrow}(t, t') G^\gtrless_{ji, \uparrow}(t', t).
 \end{align*}
 ```
 
@@ -138,15 +138,14 @@ function second_Born!(model, data, times, _, _, t, t′)
         resize!(ΣG_d, n)        
     end
     
-    # The interaction varies as a function of the forward time (t+t')/2
-    U_t = U((times[t] + times[t′])/2)
+    U_tt′ = U(times[t]) * U(times[t′])
     
     # Define the self-energies
-    ΣL_u[t, t′] = U_t^2 .* GL_u[t, t′] .* GL_d[t, t′] .* transpose(GG_d[t′, t])
-    ΣL_d[t, t′] = U_t^2 .* GL_u[t, t′] .* GL_d[t, t′] .* transpose(GG_u[t′, t])
+    ΣL_u[t, t′] = U_tt′ .* GL_u[t, t′] .* GL_d[t, t′] .* transpose(GG_d[t′, t])
+    ΣL_d[t, t′] = U_tt′ .* GL_u[t, t′] .* GL_d[t, t′] .* transpose(GG_u[t′, t])
     
-    ΣG_u[t, t′] = U_t^2 .* GG_u[t, t′] .* GG_d[t, t′] .* transpose(GL_d[t′, t])
-    ΣG_d[t, t′] = U_t^2 .* GG_u[t, t′] .* GG_d[t, t′] .* transpose(GL_u[t′, t])
+    ΣG_u[t, t′] = U_tt′ .* GG_u[t, t′] .* GG_d[t, t′] .* transpose(GL_d[t′, t])
+    ΣG_d[t, t′] = U_tt′ .* GG_u[t, t′] .* GG_d[t, t′] .* transpose(GL_u[t′, t])
 end
 ```
 !!! note
@@ -158,61 +157,60 @@ or of the _second_ form
 ``\int_{t_0}^{t'}\mathrm{d}{s}  \boldsymbol{\Sigma}_\sigma^\lessgtr(t, s) \left[\boldsymbol{G}_\sigma^<(s, t') - \boldsymbol{G}_\sigma^>(s, t') \right].`` The discretization of these time convolutions results in a sum of matrix-products over all time indices. To be as efficient as possible, this suggests to introduce two auxiliary functions that handle these integrations by avoiding unnecessary allocations:
 ```julia
 # Auxiliary integrator for the first type of integral
-function integrate1(hs::Vector, t1, t2, A::GreenFunction, B::GreenFunction, C::GreenFunction; tmax=t1)
+function integrate1(hs::AbstractVector, t1, t2, A::GreenFunction, B::GreenFunction, C::GreenFunction; tmax=t1)
     retval = zero(A[t1, t1])
 
     @inbounds for k in 1:tmax
-        @views LinearAlgebra.mul!(retval, A[t1, k] - B[t1, k], C[k, t2], hs[k], 1.0)
+        @views LinearAlgebra.mul!(retval, A.data[:, :, t1, k] - B.data[:, :, t1, k], C.data[:, :, k, t2], hs[k], 1.0)
     end
     return retval
 end
 
 # Auxiliary integrator for the second type of integral
-function integrate2(hs::Vector, t1, t2, A::GreenFunction, B::GreenFunction, C::GreenFunction; tmax=t2)
+function integrate2(hs::AbstractVector, t1, t2, A::GreenFunction, B::GreenFunction, C::GreenFunction; tmax=t2)
     retval = zero(A[t1, t1])
 
     @inbounds for k in 1:tmax
-        @views LinearAlgebra.mul!(retval, A[t1, k], B[k, t2] - C[k, t2], hs[k], 1.0)
+        @views LinearAlgebra.mul!(retval, A.data[:, :, t1, k], B.data[:, :, k, t2] - C.data[:, :, k, t2], hs[k], 1.0)
     end
     return retval
 end
 ```
 !!! note
-    The first argument `hs::Vector` denotes the _adaptive_ integration weights provided by `KadanoffBaym`. Since these depend on the boundary points of the integration, there will usually be different weight vectors for the two integrals.
+    The first argument `hs::AbstractVector` denotes the _adaptive_ integration weights provided by `KadanoffBaym`. Since these depend on the boundary points of the integration, there will usually be different weight vectors for the two integrals.
 
 We are finally ready to define the equations of motion! In "vertical" time, we have
 ```julia
 # Right-hand side for the "vertical" evolution
 function fv!(model, data, out, times, h1, h2, t, t′)
     # Unpack data and model
-    (; GL_u, GG_u, GL_u, GG_d, ΣL_u, ΣG_u, ΣL_d, ΣG_d) = data
+    (; GL_u, GG_u, GL_d, GG_d, ΣL_u, ΣG_u, ΣL_d, ΣG_d) = data
     (; H_u, H_d, U) = model
 
     # Real-time collision integrals
     ∫dt1(A, B, C) = integrate1(h1, t, t′, A, B, C)
     ∫dt2(A, B, C) = integrate2(h2, t, t′, A, B, C)
     
-    # The interaction varies as a function of the forward time (t+t')/2
-    U_t = U((times[t] + times[t′])/2)
+    U_t = U(times[t])
     
     # Hartree-Fock self-energies
-    ΣHF_u(t, t′) = im * U_t * Diagonal(GL_d[t, t])
-    ΣHF_d(t, t′) = im * U_t * Diagonal(GL_u[t, t])
+    ΣHF_u = -im * U_t * Diagonal(GL_d[t, t])
+    ΣHF_d = -im * U_t * Diagonal(GL_u[t, t])
     
     # Equations of motion
-    out[1] = -1.0im * ((H_u + ΣHF_u(t, t′)) * GL_u[t, t′] + 
+    out[1] = -1.0im * ((H_u + ΣHF_u) * GL_u[t, t′] +
             ∫dt1(ΣG_u, ΣL_u, GL_u) + ∫dt2(ΣL_u, GL_u, GG_u)
         )
 
-    out[2] = -1.0im * ((H_u + ΣHF_u(t, t′)) * GG_u[t, t′] + 
+    out[2] = -1.0im * ((H_u + ΣHF_u) * GG_u[t, t′] +
             ∫dt1(ΣG_u, ΣL_u, GG_u) + ∫dt2(ΣG_u, GL_u, GG_u)
         )
 
-    out[3] = -1.0im * ((H_d + ΣHF_d(t, t′)) * GL_d[t, t′] + 
+    out[3] = -1.0im * ((H_d + ΣHF_d) * GL_d[t, t′] +
             ∫dt1(ΣG_d, ΣL_d, GL_d) + ∫dt2(ΣL_d, GL_d, GG_d)
         )
 
-    out[4] = -1.0im * ((H_d + ΣHF_d(t, t′)) * GG_d[t, t′] +
+    out[4] = -1.0im * ((H_d + ΣHF_d) * GG_d[t, t′] +
             ∫dt1(ΣG_d, ΣL_d, GG_d) + ∫dt2(ΣG_d, GL_d, GG_d)
         )  
     
@@ -248,7 +246,4 @@ sol = kbsolve!(
     stop = x -> (println("t: $(x[end])"); flush(stdout); false)
 )
 ```
-That's it! Results for `tmax=32` are shown in [our paper](https://doi.org/10.21468/SciPostPhysCore.5.2.030). Note that this implementation via `KadanoffBaym` is about as compact as possible.
-
-
-
+Results for `tmax=32` are shown in [our paper](https://doi.org/10.21468/SciPostPhysCore.5.2.030). Those published figures predate the Hartree-sign correction in the equations and code above.
