@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.5.1 (2026-11-12)
+
+### Bug fixes
+- Fixed the corrector in the first Adams step, which added the increment twice
+  (`u1 = u0 + h (f0 + f1)` instead of the trapezoidal `u1 = u0 + h/2 (f0 + f1)`).
+  Solutions now differ slightly from v1.5.0, because the error in the first step
+  propagated to later times (#35)
+
 ## v1.5.0 (2026-06-18)
 
 > Released as a minor version (not a patch) because the minimum Julia was raised
